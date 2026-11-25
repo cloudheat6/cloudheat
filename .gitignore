@@ -1,0 +1,9 @@
+node_modules
+dist
+*.log
+deploy/*.tar.gz
+deploy/.out
+bin
+obj
+pwd.json
+.vite

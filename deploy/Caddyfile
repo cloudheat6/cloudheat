@@ -1,0 +1,63 @@
+# /etc/caddy/Caddyfile (setup-server.ps1 이 설치함)
+# 도메인 사이트는 Caddy 가 HTTPS 인증서를 자동 발급·갱신합니다.
+
+# React SPA 정적 파일 (인자: 배포 폴더)
+(spa) {
+	root * {args[0]}
+
+	# Vite 빌드 결과물은 파일명에 해시가 붙으니 오래 캐시
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# 그 외(index.html 등)는 항상 새로 받아서 배포 즉시 반영
+	@other not path /assets/*
+	header @other Cache-Control "no-cache"
+
+	# 없는 경로는 index.html 로 (클라이언트 라우팅)
+	try_files {path} /index.html
+	file_server
+}
+
+# 포트폴리오 (cloudheat.kr)
+(site) {
+	encode zstd gzip
+
+	# 예전 데모 주소는 MES 웹으로
+	@oldmes path /mes /mes/*
+	redir @oldmes https://mes.__DOMAIN__/ 302
+
+	import spa /var/www/__APP__/current
+}
+
+# MES 웹 (mes.cloudheat.kr): 화면 + /api → ASP.NET Core
+(mes) {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:5080
+	}
+	handle {
+		import spa /var/www/__APP__-mes/current
+	}
+}
+
+__DOMAIN__ {
+	import site
+}
+
+www.__DOMAIN__ {
+	redir https://__DOMAIN__{uri} permanent
+}
+
+mes.__DOMAIN__ {
+	import mes
+}
+
+# 내부망 확인용: http://192.168.0.10 (포트폴리오), http://192.168.0.10:8080 (MES)
+:80 {
+	import site
+}
+
+:8080 {
+	import mes
+}
