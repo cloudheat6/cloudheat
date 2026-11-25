@@ -52,11 +52,16 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
         }
         catch (ErpException ex)
         {
+            await MarkCheckedAsync(conn, kind, "실패", ex.Message);
             return await WriteLogAsync(conn, kind, triggerBy, started, 0, 0, 0, "실패", ex.Message);
         }
 
-        // 자동 수신인데 새 데이터가 없으면 로그를 남기지 않음 (1분마다 빈 로그 방지)
-        if (orders.Count == 0 && triggerBy == "자동") return null;
+        // 자동 수신인데 새 데이터가 없으면 로그는 남기지 않고 '마지막 확인' 만 갱신 (1분마다 빈 로그 방지)
+        if (orders.Count == 0 && triggerBy == "자동")
+        {
+            await MarkCheckedAsync(conn, kind, "성공", "새 데이터 없음");
+            return null;
+        }
 
         var applied = 0;
         var problems = new List<string>();
@@ -80,8 +85,18 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
             ? (orders.Count == 0 ? "새 데이터 없음" : $"{string.Join(", ", orders.Select(o => o.OrderNo).Take(5))}{(orders.Count > 5 ? " 외" : "")}")
             : string.Join(" / ", problems);
         if (problems.Count > 0) log.LogWarning("{Kind} 수신 일부 실패: {Message}", kind, message);
+        await MarkCheckedAsync(conn, kind, status, message);
         return await WriteLogAsync(conn, kind, triggerBy, started, orders.Count, applied, problems.Count, status, message);
     }
+
+    // 종류별 마지막 확인 결과 (화면의 '발주 수신 · 주문 수신' 상태)
+    private static Task MarkCheckedAsync(NpgsqlConnection conn, string kind, string status, string message) =>
+        conn.ExecuteAsync("""
+            INSERT INTO mes.erp_sync_cursor (kind, last_checked_at, last_status, last_message)
+            VALUES (@kind, now(), @status, left(@message, 500))
+            ON CONFLICT (kind) DO UPDATE
+                SET last_checked_at = now(), last_status = EXCLUDED.last_status, last_message = EXCLUDED.last_message
+            """, new { kind, status, message });
 
     // 주문 1건 = 트랜잭션 1개. MES 에 없는 품목이 있으면 그 건만 건너뜀
     private static async Task<string?> ApplyAsync(NpgsqlConnection conn, string kind, ErpOrder o, CancellationToken ct)

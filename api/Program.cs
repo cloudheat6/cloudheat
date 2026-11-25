@@ -40,6 +40,19 @@ builder.Services.AddRateLimiter(o =>
 });
 
 var app = builder.Build();
+
+// DB 스키마 적용: schema.sql 은 IF NOT EXISTS / CREATE OR REPLACE 로만 되어 있어 매번 실행해도 안전.
+// 실패하면 시작하지 않음 → 배포 헬스체크 실패 → 이전 버전으로 자동 되돌림
+await using (var stream = typeof(AppInfo).Assembly.GetManifestResourceStream("schema.sql")!)
+using (var reader = new StreamReader(stream))
+{
+    var sql = await reader.ReadToEndAsync();
+    await using var conn = await app.Services.GetRequiredService<NpgsqlDataSource>().OpenConnectionAsync();
+    await using var cmd = new NpgsqlCommand(sql, conn);
+    await cmd.ExecuteNonQueryAsync();
+    app.Logger.LogInformation("DB 스키마 적용 완료 (v{Version})", AppInfo.Version);
+}
+
 app.UseRateLimiter();
 
 var api = app.MapGroup("/api");

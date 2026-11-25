@@ -292,3 +292,10 @@ CREATE TABLE IF NOT EXISTS erp_outbox (
 );
 CREATE INDEX IF NOT EXISTS ix_erp_outbox_pending ON erp_outbox (next_attempt_at) WHERE status = '대기';
 CREATE INDEX IF NOT EXISTS ix_erp_outbox_created ON erp_outbox (created_at DESC);
+
+-- ════════════════════════════════════════════════════════
+-- 수신 상태: 새 데이터가 없어 로그를 남기지 않은 성공도 '마지막 확인' 으로 기록
+-- ════════════════════════════════════════════════════════
+ALTER TABLE erp_sync_cursor ADD COLUMN IF NOT EXISTS last_checked_at timestamptz;
+ALTER TABLE erp_sync_cursor ADD COLUMN IF NOT EXISTS last_status     varchar(10);
+ALTER TABLE erp_sync_cursor ADD COLUMN IF NOT EXISTS last_message    varchar(500);

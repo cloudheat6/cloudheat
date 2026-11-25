@@ -41,9 +41,13 @@ public sealed class IntegrationRepository(NpgsqlDataSource db)
         await using var conn = await db.OpenConnectionAsync();
         var counts = (await conn.QueryAsync<(string Status, int Count)>(
             "SELECT status, count(*)::int FROM mes.erp_outbox GROUP BY status")).ToDictionary(x => x.Status, x => x.Count);
+        // 마지막 확인 결과 (새 데이터 없이 성공한 자동 수신 포함)
         var lastSync = await conn.QueryAsync<SyncLog>("""
-            SELECT DISTINCT ON (kind) sync_id, kind, trigger_by, started_at, finished_at, fetched, applied, skipped, status, message
-            FROM mes.erp_sync_log ORDER BY kind, started_at DESC
+            SELECT kind, last_checked_at AS started_at, last_checked_at AS finished_at,
+                   COALESCE(last_status, '-') AS status, COALESCE(last_message, '') AS message
+            FROM mes.erp_sync_cursor
+            WHERE last_checked_at IS NOT NULL
+            ORDER BY kind
             """);
         var orders = await conn.QuerySingleAsync<(int Po, int So)>(
             "SELECT (SELECT count(*) FROM mes.purchase_order)::int, (SELECT count(*) FROM mes.sales_order)::int");

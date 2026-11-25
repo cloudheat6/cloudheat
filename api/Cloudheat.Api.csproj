@@ -11,4 +11,9 @@
     <PackageReference Include="Npgsql" Version="11.0.0" />
   </ItemGroup>
 
+  <!-- 시작할 때 schema.sql 을 적용 (여러 번 실행해도 안전한 스크립트) -->
+  <ItemGroup>
+    <EmbeddedResource Include="db\schema.sql" LogicalName="schema.sql" />
+  </ItemGroup>
+
 </Project>
