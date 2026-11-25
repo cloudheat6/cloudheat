@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { buildInfo } from '../build-info.js'
+import { buildInfo } from '../build-info.mjs'
 
 // MES 웹 (mes.cloudheat.kr)
 export default defineConfig({
