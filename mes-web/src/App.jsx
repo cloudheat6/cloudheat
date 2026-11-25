@@ -13,11 +13,25 @@ import Planned from './pages/Planned.jsx'
 export const MENU = [
   { group: null, items: [{ to: '/', label: '대시보드', icon: '◧' }] },
   {
+    group: '기준정보',
+    items: [
+      { to: '/master/items', label: '품목관리', icon: '▦', planned: '제품 · 반제품 · 원자재 품목, 단위, 기본 창고' },
+      { to: '/master/partners', label: '거래처관리', icon: '☷', planned: '매입처 · 매출처' },
+      { to: '/master/processes', label: '공정 · 창고관리', icon: '⌂', planned: '라인 · 공정, 창고' },
+      { to: '/master/routings', label: '라우팅관리', icon: '↬', planned: '품목별 공정 순서' },
+      { to: '/master/bom', label: 'BOM관리', icon: '⋔', planned: '제품 1개를 만드는 데 필요한 원자재 · 수량 (생산 시 자재 투입에 사용)' },
+    ],
+  },
+  {
     group: '구매',
     items: [
       { to: '/purchase/orders', label: '발주관리', icon: '⇣' },
       { to: '/purchase/receipts', label: '입고관리', icon: '⊕', planned: '발주를 선택해서 입고 등록 → 원자재 재고 증가 → ERP 로 입고 전송' },
     ],
+  },
+  {
+    group: '생산',
+    items: [{ to: '/production/work-orders', label: '작업지시관리', icon: '⚙' }],
   },
   {
     group: '영업',
@@ -27,10 +41,6 @@ export const MENU = [
     ],
   },
   {
-    group: '생산',
-    items: [{ to: '/production/work-orders', label: '작업지시관리', icon: '⚙' }],
-  },
-  {
     group: '재고',
     items: [
       { to: '/inventory/moves', label: '재고이동관리', icon: '⇄', planned: '창고 간 재고 이동 (출고 창고 −, 입고 창고 +)' },
@@ -38,16 +48,6 @@ export const MENU = [
       { to: '/inventory/opening', label: '기초재고관리', icon: '◫', planned: '시스템 시작 시점의 품목 × 창고별 재고 등록' },
       { to: '/inventory/stock', label: '현재고조회', icon: '▤' },
       { to: '/inventory/transactions', label: '재고수불조회', icon: '≡' },
-    ],
-  },
-  {
-    group: '기준정보',
-    items: [
-      { to: '/master/items', label: '품목관리', icon: '▦', planned: '제품 · 반제품 · 원자재 품목, 단위, 기본 창고' },
-      { to: '/master/partners', label: '거래처관리', icon: '☷', planned: '매입처 · 매출처' },
-      { to: '/master/processes', label: '공정 · 창고관리', icon: '⌂', planned: '라인 · 공정, 창고' },
-      { to: '/master/routings', label: '라우팅관리', icon: '↬', planned: '품목별 공정 순서' },
-      { to: '/master/bom', label: 'BOM관리', icon: '⋔', planned: '제품 1개를 만드는 데 필요한 원자재 · 수량 (생산 시 자재 투입에 사용)' },
     ],
   },
   { group: 'ERP 연동', items: [{ to: '/integration', label: '연동 모니터링', icon: '⇅' }] },
@@ -105,9 +105,7 @@ export default function App() {
           <button className="menu-btn" aria-label="메뉴" onClick={() => setNavOpen((v) => !v)}>
             ☰
           </button>
-          <div className="topbar-note">
-            가상 데이터 · 표에서 <kbd>Ctrl</kbd>+<kbd>C</kbd> 셀 복사, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> 행 복사
-          </div>
+          <div className="topbar-note">가상 데이터</div>
           <NavLink to="/integration" className={`erp-pill ${erpOnline == null ? '' : erpOnline ? 'up' : 'down'}`}>
             <i className="dot" />
             가상 ERP {erpOnline == null ? '확인 중' : erpOnline ? '연결됨' : '응답 없음'}
