@@ -31,7 +31,10 @@ export const MENU = [
   },
   {
     group: '생산',
-    items: [{ to: '/production/work-orders', label: '작업지시관리', icon: '⚙' }],
+    items: [
+      { to: '/production/work-orders', label: '작업지시관리', icon: '⚙' },
+      { to: '/production/results', label: '생산실적관리', icon: '✓', planned: '작업지시를 골라 양품 · 불량 실적을 건별로 등록 · 취소 → 제품 재고 반영 · ERP 로 생산실적 전송' },
+    ],
   },
   {
     group: '영업',
