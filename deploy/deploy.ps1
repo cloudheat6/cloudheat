@@ -73,13 +73,15 @@ $dirty = [bool](git -C $Root status --porcelain)
 
 if ($Bump) {
     if ($dirty) { throw '커밋하지 않은 변경이 있어요. 먼저 커밋한 뒤 -Bump 하세요. (git status 로 확인)' }
-    $v = $Version.Split('.') | ForEach-Object { [int]$_ }
-    switch ($Bump) {
-        'major' { $v = @($v[0] + 1, 0, 0) }
-        'minor' { $v = @($v[0], $v[1] + 1, 0) }
-        'patch' { $v = @($v[0], $v[1], $v[2] + 1) }
+    if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "VERSION 파일 형식이 MAJOR.MINOR.PATCH 가 아니에요: $Version" }
+    [int[]]$v = $Version.Split('.')
+    # 주의: PowerShell 은 쉼표가 + 보다 먼저 묶여서 @($a, $b + 1) 이 배열 이어붙이기가 됨 → 괄호 필수
+    $New = switch ($Bump) {
+        'major' { '{0}.0.0' -f ($v[0] + 1) }
+        'minor' { '{0}.{1}.0' -f $v[0], ($v[1] + 1) }
+        'patch' { '{0}.{1}.{2}' -f $v[0], $v[1], ($v[2] + 1) }
     }
-    $New = $v -join '.'
+    if ($New -notmatch '^\d+\.\d+\.\d+$') { throw "버전 계산 오류: $New" }
     Step "버전 올림: $Version → $New"
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     [IO.File]::WriteAllText($VersionFile, "$New`n", $utf8)
