@@ -20,6 +20,10 @@ public sealed record ErpOrder(
     string OrderNo, string OrderDate, string PartnerCode, string PartnerName,
     string DueDate, string Status, DateTime UpdatedAt, List<ErpOrderLine> Lines);
 
+public sealed record ErpItem(string ItemCode, string ItemName, string ItemType, string Unit, DateTime UpdatedAt);
+
+public sealed record ErpPartner(string PartnerCode, string PartnerName, string PartnerType, DateTime UpdatedAt);
+
 public sealed record ErpDocument(string DocNo, string DocType, string ErpDocNo, DateTime ReceivedAt, int LineCount, int TotalQty);
 
 // ── 전송 결과 ──────────────────────────────────────────────
@@ -35,17 +39,24 @@ public sealed class ErpClient(HttpClient http)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    public Task<List<ErpItem>> GetItemsAsync(DateTime? since, CancellationToken ct) =>
+        GetListAsync<ErpItem>("erp/v1/items", since, ct);
+
+    public Task<List<ErpPartner>> GetPartnersAsync(DateTime? since, CancellationToken ct) =>
+        GetListAsync<ErpPartner>("erp/v1/partners", since, ct);
+
     public Task<List<ErpOrder>> GetPurchaseOrdersAsync(DateTime? since, CancellationToken ct) =>
-        GetOrdersAsync("erp/v1/purchase-orders", since, ct);
+        GetListAsync<ErpOrder>("erp/v1/purchase-orders", since, ct);
 
     public Task<List<ErpOrder>> GetSalesOrdersAsync(DateTime? since, CancellationToken ct) =>
-        GetOrdersAsync("erp/v1/sales-orders", since, ct);
+        GetListAsync<ErpOrder>("erp/v1/sales-orders", since, ct);
 
-    private async Task<List<ErpOrder>> GetOrdersAsync(string path, DateTime? since, CancellationToken ct)
+    // updatedSince 이후 바뀐 것만 (증분 수신)
+    private async Task<List<T>> GetListAsync<T>(string path, DateTime? since, CancellationToken ct)
     {
         var url = since is null ? path : $"{path}?updatedSince={Uri.EscapeDataString(since.Value.ToUniversalTime().ToString("O"))}";
         using var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
-        return await res.Content.ReadFromJsonAsync<List<ErpOrder>>(Json, ct) ?? [];
+        return await res.Content.ReadFromJsonAsync<List<T>>(Json, ct) ?? [];
     }
 
     public async Task<List<ErpDocument>> GetDocumentsAsync(int limit, CancellationToken ct)

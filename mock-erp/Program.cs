@@ -18,6 +18,15 @@ builder.Services.AddSingleton<ErpStore>();
 
 var app = builder.Build();
 
+// erp 스키마 적용 (멱등). 실패하면 시작하지 않음 → 배포 헬스체크가 이전 버전으로 되돌림
+await using (var stream = typeof(AppInfo).Assembly.GetManifestResourceStream("schema.sql")!)
+using (var reader = new StreamReader(stream))
+{
+    await using var conn = await app.Services.GetRequiredService<NpgsqlDataSource>().OpenConnectionAsync();
+    await using var cmd = new NpgsqlCommand(await reader.ReadToEndAsync(), conn);
+    await cmd.ExecuteNonQueryAsync();
+}
+
 app.MapGet("/erp/health", async (NpgsqlDataSource db) =>
 {
     await using var conn = await db.OpenConnectionAsync();
@@ -41,6 +50,13 @@ v1.AddEndpointFilter(async (ctx, next) =>
         await Task.Delay(TimeSpan.FromSeconds(8), http.RequestAborted);   // MES 타임아웃(5초) 유도
     return await next(ctx);
 });
+
+// 기준정보: 품목 · 거래처 (ERP 가 원본)
+v1.MapGet("/items", async (DateTimeOffset? updatedSince, ErpStore store) =>
+    Results.Ok(await store.ListItemsAsync(updatedSince?.ToUniversalTime())));
+
+v1.MapGet("/partners", async (DateTimeOffset? updatedSince, ErpStore store) =>
+    Results.Ok(await store.ListPartnersAsync(updatedSince?.ToUniversalTime())));
 
 v1.MapGet("/purchase-orders", async (DateTimeOffset? updatedSince, ErpStore store) =>
     Results.Ok(await store.ListOrdersAsync(OrderKind.Purchase, updatedSince?.ToUniversalTime())));

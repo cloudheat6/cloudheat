@@ -299,3 +299,111 @@ CREATE INDEX IF NOT EXISTS ix_erp_outbox_created ON erp_outbox (created_at DESC)
 ALTER TABLE erp_sync_cursor ADD COLUMN IF NOT EXISTS last_checked_at timestamptz;
 ALTER TABLE erp_sync_cursor ADD COLUMN IF NOT EXISTS last_status     varchar(10);
 ALTER TABLE erp_sync_cursor ADD COLUMN IF NOT EXISTS last_message    varchar(500);
+
+-- ════════════════════════════════════════════════════════
+-- 기준정보: 품목 · 거래처는 ERP 기준(수신), 공정 · 창고 · 라인 · 라우팅 · BOM 은 MES 관리
+-- ════════════════════════════════════════════════════════
+
+-- 품목: 이름 · 구분 · 단위는 ERP 값, 아래는 MES 전용 속성
+ALTER TABLE item ADD COLUMN IF NOT EXISTS default_wh_code varchar(10) REFERENCES warehouse;
+ALTER TABLE item ADD COLUMN IF NOT EXISTS safety_qty      integer     NOT NULL DEFAULT 0;
+ALTER TABLE item ADD COLUMN IF NOT EXISTS use_yn          boolean     NOT NULL DEFAULT true;
+ALTER TABLE item ADD COLUMN IF NOT EXISTS erp_synced_at   timestamptz;
+ALTER TABLE item ADD COLUMN IF NOT EXISTS updated_at      timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE warehouse ADD COLUMN IF NOT EXISTS wh_type varchar(10) NOT NULL DEFAULT '일반';
+ALTER TABLE warehouse ADD COLUMN IF NOT EXISTS use_yn  boolean     NOT NULL DEFAULT true;
+ALTER TABLE line      ADD COLUMN IF NOT EXISTS use_yn  boolean     NOT NULL DEFAULT true;
+
+-- 처음 한 번: 기존 창고 구분 · 품목 기본 창고 채우기
+UPDATE warehouse
+SET wh_type = CASE wh_code WHEN 'WH-RM' THEN '원자재' WHEN 'WH-WIP' THEN '현장' WHEN 'WH-FG' THEN '제품' ELSE wh_type END
+WHERE wh_type = '일반' AND wh_code IN ('WH-RM', 'WH-WIP', 'WH-FG');
+UPDATE item
+SET default_wh_code = CASE WHEN item_type = '원자재' THEN 'WH-RM' ELSE 'WH-FG' END
+WHERE default_wh_code IS NULL AND erp_synced_at IS NULL
+  AND EXISTS (SELECT 1 FROM warehouse WHERE wh_code = 'WH-RM')
+  AND EXISTS (SELECT 1 FROM warehouse WHERE wh_code = 'WH-FG');
+
+-- 거래처 (ERP 에서 수신)
+CREATE TABLE IF NOT EXISTS partner (
+    partner_code   varchar(10) PRIMARY KEY,
+    partner_name   varchar(50) NOT NULL,
+    partner_type   varchar(10) NOT NULL,
+    erp_synced_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- 공정
+CREATE TABLE IF NOT EXISTS process (
+    process_code  varchar(10) PRIMARY KEY,
+    process_name  varchar(30) NOT NULL,
+    sort_no       smallint    NOT NULL DEFAULT 0,
+    use_yn        boolean     NOT NULL DEFAULT true
+);
+
+-- 라우팅: 품목별 공정 순서 (예전 라인별 routing_step 을 대체)
+CREATE TABLE IF NOT EXISTS routing (
+    item_code     varchar(20) NOT NULL REFERENCES item ON DELETE CASCADE,
+    seq           smallint    NOT NULL,
+    process_code  varchar(10) NOT NULL REFERENCES process,
+    line_id       smallint    REFERENCES line,
+    PRIMARY KEY (item_code, seq)
+);
+
+-- BOM: 모품목 1개를 만드는 데 드는 자품목 수량 (단단계)
+CREATE TABLE IF NOT EXISTS bom (
+    parent_code  varchar(20)   NOT NULL REFERENCES item ON DELETE CASCADE,
+    child_code   varchar(20)   NOT NULL REFERENCES item,
+    qty_per      numeric(12,4) NOT NULL CHECK (qty_per > 0),
+    seq          smallint      NOT NULL DEFAULT 0,
+    PRIMARY KEY (parent_code, child_code),
+    CONSTRAINT ck_bom_self CHECK (parent_code <> child_code)
+);
+
+-- 처음 한 번: 라인별 공정(routing_step) → 공정 마스터 + 품목별 라우팅
+INSERT INTO process (process_code, process_name, sort_no)
+SELECT 'P' || lpad(n::text, 2, '0'), step_name, n::smallint
+FROM (
+    SELECT step_name, row_number() OVER (ORDER BY min(line_id), min(seq), step_name) AS n
+    FROM routing_step GROUP BY step_name
+) s
+WHERE NOT EXISTS (SELECT 1 FROM process);
+
+INSERT INTO routing (item_code, seq, process_code, line_id)
+SELECT i.item_code, rs.seq, p.process_code, rs.line_id
+FROM item i
+JOIN routing_step rs ON rs.line_id = i.line_id
+JOIN process p       ON p.process_name = rs.step_name
+WHERE i.item_type = '제품' AND NOT EXISTS (SELECT 1 FROM routing);
+
+-- 공정별 실적을 품목 라우팅 기준으로 (위의 라인 기준 정의를 대체)
+-- 라우팅을 바꿔 가중치가 없는 공정은 가중치 1 로 계산
+CREATE OR REPLACE FUNCTION fn_wo_process(p_wo_id integer)
+RETURNS TABLE (seq smallint, step_name varchar, in_qty integer, out_qty integer, loss_qty integer)
+LANGUAGE sql STABLE AS $$
+    WITH s AS (
+        SELECT r.seq,
+               p.process_name::varchar                                   AS step_name,
+               w.prod_qty + w.defect_qty                                 AS input_qty,
+               w.defect_qty,
+               COALESCE(pw.weight, 1)                                    AS weight,
+               sum(COALESCE(pw.weight, 1)) OVER (ORDER BY r.seq)         AS cum_w,
+               sum(COALESCE(pw.weight, 1)) OVER ()                       AS tot_w
+        FROM mes.work_order w
+        JOIN mes.routing r                 ON r.item_code    = w.item_code
+        JOIN mes.process p                 ON p.process_code = r.process_code
+        LEFT JOIN mes.wo_process_weight pw ON pw.wo_id = w.wo_id AND pw.seq = r.seq
+        WHERE w.wo_id = p_wo_id
+    ), c AS (
+        SELECT s.*,
+               round(defect_qty * (cum_w - weight) / tot_w)::integer AS loss_before,
+               round(defect_qty * cum_w / tot_w)::integer            AS loss_after
+        FROM s
+    )
+    SELECT c.seq, c.step_name,
+           c.input_qty - c.loss_before,
+           c.input_qty - c.loss_after,
+           c.loss_after - c.loss_before
+    FROM c
+    ORDER BY c.seq
+$$;

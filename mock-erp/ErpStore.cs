@@ -28,6 +28,23 @@ public sealed class OrderHeader
     public List<OrderLine> Lines { get; } = [];
 }
 
+public sealed class ErpItem
+{
+    public string ItemCode { get; init; } = "";
+    public string ItemName { get; init; } = "";
+    public string ItemType { get; init; } = "";
+    public string Unit { get; init; } = "";
+    public DateTime UpdatedAt { get; init; }
+}
+
+public sealed class ErpPartner
+{
+    public string PartnerCode { get; init; } = "";
+    public string PartnerName { get; init; } = "";
+    public string PartnerType { get; init; } = "";
+    public DateTime UpdatedAt { get; init; }
+}
+
 public sealed record MesDocLine(string ItemCode, int Qty, string? WhCode, string? RefNo);
 
 public sealed record MesDocument(string DocNo, string DocType, string DocDate, List<MesDocLine> Lines, string? Ref);
@@ -51,6 +68,25 @@ public sealed class ErpStore(NpgsqlDataSource db)
         ["출고"] = "EGI",
     };
 
+    public async Task<IEnumerable<ErpItem>> ListItemsAsync(DateTimeOffset? updatedSince)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        return await conn.QueryAsync<ErpItem>("""
+            SELECT item_code, item_name, item_type, unit, updated_at FROM erp.item
+            WHERE @since::timestamptz IS NULL OR updated_at > @since
+            ORDER BY updated_at, item_code
+            """, new { since = updatedSince });
+    }
+
+    public async Task<IEnumerable<ErpPartner>> ListPartnersAsync(DateTimeOffset? updatedSince)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        return await conn.QueryAsync<ErpPartner>("""
+            SELECT partner_code, partner_name, partner_type, updated_at FROM erp.partner
+            WHERE @since::timestamptz IS NULL OR updated_at > @since
+            ORDER BY updated_at, partner_code
+            """, new { since = updatedSince });
+    }
 
     public async Task<List<OrderHeader>> ListOrdersAsync(OrderKind kind, DateTimeOffset? updatedSince)
     {

@@ -64,3 +64,7 @@ CREATE TABLE IF NOT EXISTS mes_document (
 );
 
 CREATE SEQUENCE IF NOT EXISTS doc_seq;
+
+-- MES 가 품목 · 거래처를 증분으로 가져가도록 변경 시각
+ALTER TABLE item    ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE partner ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();

@@ -8,6 +8,11 @@ import StockTx from './pages/StockTx.jsx'
 import Orders from './pages/Orders.jsx'
 import Integration from './pages/Integration.jsx'
 import Planned from './pages/Planned.jsx'
+import Items from './pages/master/Items.jsx'
+import Partners from './pages/master/Partners.jsx'
+import ProcessWarehouse from './pages/master/ProcessWarehouse.jsx'
+import Routings from './pages/master/Routings.jsx'
+import Bom from './pages/master/Bom.jsx'
 
 // 메뉴: planned 가 있으면 아직 준비 중인 화면 (설명 문구)
 export const MENU = [
@@ -15,11 +20,11 @@ export const MENU = [
   {
     group: '기준정보',
     items: [
-      { to: '/master/items', label: '품목관리', icon: '▦', planned: '제품 · 반제품 · 원자재 품목, 단위, 기본 창고' },
-      { to: '/master/partners', label: '거래처관리', icon: '☷', planned: '매입처 · 매출처' },
-      { to: '/master/processes', label: '공정 · 창고관리', icon: '⌂', planned: '라인 · 공정, 창고' },
-      { to: '/master/routings', label: '라우팅관리', icon: '↬', planned: '품목별 공정 순서' },
-      { to: '/master/bom', label: 'BOM관리', icon: '⋔', planned: '제품 1개를 만드는 데 필요한 원자재 · 수량 (생산 시 자재 투입에 사용)' },
+      { to: '/master/items', label: '품목관리', icon: '▦' },
+      { to: '/master/partners', label: '거래처관리', icon: '☷' },
+      { to: '/master/processes', label: '공정 · 창고관리', icon: '⌂' },
+      { to: '/master/routings', label: '라우팅관리', icon: '↬' },
+      { to: '/master/bom', label: 'BOM관리', icon: '⋔' },
     ],
   },
   {
@@ -124,6 +129,11 @@ export default function App() {
             <Route path="/inventory/stock" element={<Stock />} />
             <Route path="/inventory/transactions" element={<StockTx />} />
             <Route path="/integration" element={<Integration />} />
+            <Route path="/master/items" element={<Items />} />
+            <Route path="/master/partners" element={<Partners />} />
+            <Route path="/master/processes" element={<ProcessWarehouse />} />
+            <Route path="/master/routings" element={<Routings />} />
+            <Route path="/master/bom" element={<Bom />} />
             {PLANNED.map((p) => (
               <Route key={p.to} path={p.to} element={<Planned title={p.label} desc={p.planned} />} />
             ))}

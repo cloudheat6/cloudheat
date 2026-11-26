@@ -237,8 +237,58 @@ a.step:hover { border-color: var(--accent); }
 }
 .toast.ok { background: var(--ok); }
 
+/* ── 기준정보 ─────────────────────────────── */
+.add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.add-row input, .add-row select, .edit-table select, .edit-table input {
+  height: 34px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px;
+}
+.add-row input:focus, .add-row select:focus, .edit-table select:focus, .edit-table input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.grid-box .erp-col { color: var(--muted); }
+.legend { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
+.legend-erp { background: var(--surface); }
+.legend-mes { margin-left: 8px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+.md { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+.picker { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.picker .search { flex: none; min-width: 0; width: 100%; }
+.picker ul { margin: 0; padding: 0; list-style: none; max-height: 560px; overflow: auto; }
+.pick {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 8px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.pick:hover { background: color-mix(in srgb, var(--muted) 10%, transparent); }
+.pick.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.pick.off { opacity: 0.5; }
+.pick-main { display: flex; flex-direction: column; min-width: 0; }
+.pick-name { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-count { flex: none; font-size: 12px; color: var(--muted); }
+.pick-count.zero { color: var(--warn); font-weight: 600; }
+.pick-empty { padding: 8px 10px; }
+
+.editor { padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.editor-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.edit-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.edit-table th { padding: 8px 6px; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 500; text-align: left; }
+.edit-table td { padding: 6px; border-bottom: 1px solid var(--border); }
+.edit-table select { width: 100%; }
+.edit-table .empty-row { padding: 16px 6px; text-align: center; }
+.row-actions { white-space: nowrap; text-align: right; }
+.icon-btn.sm { width: 28px; height: 28px; font-size: 15px; }
+.icon-btn:disabled { opacity: 0.3; cursor: default; }
+.qty-input { display: flex; align-items: center; gap: 6px; }
+.qty-input input { width: 110px; text-align: right; }
+.add-btn { margin-top: 10px; }
+.warn-note { margin: 10px 0 0; color: var(--warn); }
+
 /* ── 반응형 ───────────────────────────────── */
 @media (max-width: 1100px) {
+  .md { grid-template-columns: 1fr; }
+  .picker ul { max-height: 240px; }
   .split.with-side { grid-template-columns: 1fr; }
   .side-panel { max-height: none; }
   .cards-2 { grid-template-columns: 1fr; }

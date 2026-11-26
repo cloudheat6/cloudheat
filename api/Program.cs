@@ -15,6 +15,7 @@ builder.Services.AddSingleton(new NpgsqlDataSourceBuilder(connectionString).Buil
 builder.Services.AddSingleton<WorkOrderRepository>();
 builder.Services.AddSingleton<InventoryRepository>();
 builder.Services.AddSingleton<IntegrationRepository>();
+builder.Services.AddSingleton<MasterRepository>();
 
 // ERP 연동: 클라이언트 · 수신(1분 주기) · 송신(outbox, 3초 주기)
 var erpOptions = builder.Configuration.GetSection("Erp").Get<ErpOptions>() ?? new ErpOptions();
@@ -91,6 +92,63 @@ api.MapGet("/inventory/stock", async (InventoryRepository repo) =>
 
 api.MapGet("/inventory/transactions", async (int? limit, string? itemCode, InventoryRepository repo) =>
     Results.Ok(await repo.TransactionsAsync(Math.Clamp(limit ?? 500, 1, 2000), itemCode)));
+
+// ── 기준정보 ───────────────────────────────────────────────
+var master = api.MapGroup("/master");
+master.AddEndpointFilter(async (ctx, next) =>
+{
+    try { return await next(ctx); }
+    catch (MasterException ex) { return Results.Json(new { message = ex.Message }, statusCode: ex.Status); }
+});
+
+// 품목 · 거래처: ERP 가 원본 → 조회 + MES 전용 속성만 수정
+master.MapGet("/items", async (MasterRepository r) => Results.Ok(await r.ItemsAsync()));
+master.MapPut("/items/{code}", async (string code, ItemUpdate body, MasterRepository r) =>
+{ await r.UpdateItemAsync(code, body); return Results.Ok(); }).RequireRateLimiting("writes");
+master.MapGet("/partners", async (MasterRepository r) => Results.Ok(await r.PartnersAsync()));
+
+// ERP 기준정보 지금 수신 (품목 → 거래처)
+master.MapPost("/sync", async (ErpSyncService sync, ErpOptions opt, CancellationToken ct) =>
+{
+    if (!opt.Enabled) return Results.BadRequest(new { message = "ERP 연동 설정이 없어요" });
+    var logs = new List<SyncLog>();
+    foreach (var kind in ErpSyncService.MasterKinds)
+        if (await sync.SyncAsync(kind, "수동", ct) is { } l) logs.Add(l);
+    return Results.Ok(logs);
+}).RequireRateLimiting("writes");
+
+// 공정 · 창고 · 라인: MES 관리
+master.MapGet("/processes", async (MasterRepository r) => Results.Ok(await r.ProcessesAsync()));
+master.MapPost("/processes", async (ProcessInput b, MasterRepository r) =>
+{ await r.AddProcessAsync(b); return Results.Ok(); }).RequireRateLimiting("writes");
+master.MapPut("/processes/{code}", async (string code, ProcessInput b, MasterRepository r) =>
+{ await r.UpdateProcessAsync(code, b); return Results.Ok(); }).RequireRateLimiting("writes");
+master.MapDelete("/processes/{code}", async (string code, MasterRepository r) =>
+{ await r.DeleteProcessAsync(code); return Results.Ok(); }).RequireRateLimiting("writes");
+
+master.MapGet("/warehouses", async (MasterRepository r) => Results.Ok(await r.WarehousesAsync()));
+master.MapPost("/warehouses", async (WarehouseInput b, MasterRepository r) =>
+{ await r.AddWarehouseAsync(b); return Results.Ok(); }).RequireRateLimiting("writes");
+master.MapPut("/warehouses/{code}", async (string code, WarehouseInput b, MasterRepository r) =>
+{ await r.UpdateWarehouseAsync(code, b); return Results.Ok(); }).RequireRateLimiting("writes");
+master.MapDelete("/warehouses/{code}", async (string code, MasterRepository r) =>
+{ await r.DeleteWarehouseAsync(code); return Results.Ok(); }).RequireRateLimiting("writes");
+
+master.MapGet("/lines", async (MasterRepository r) => Results.Ok(await r.LinesAsync()));
+master.MapPost("/lines", async (LineInput b, MasterRepository r) =>
+{ await r.AddLineAsync(b); return Results.Ok(); }).RequireRateLimiting("writes");
+master.MapPut("/lines/{id:int}", async (short id, LineInput b, MasterRepository r) =>
+{ await r.UpdateLineAsync(id, b); return Results.Ok(); }).RequireRateLimiting("writes");
+master.MapDelete("/lines/{id:int}", async (short id, MasterRepository r) =>
+{ await r.DeleteLineAsync(id); return Results.Ok(); }).RequireRateLimiting("writes");
+
+// 라우팅 · BOM: 품목 단위로 통째로 저장
+master.MapGet("/routings/{itemCode}", async (string itemCode, MasterRepository r) => Results.Ok(await r.RoutingAsync(itemCode)));
+master.MapPut("/routings/{itemCode}", async (string itemCode, List<RoutingInput> steps, MasterRepository r) =>
+{ await r.SaveRoutingAsync(itemCode, steps); return Results.Ok(); }).RequireRateLimiting("writes");
+master.MapGet("/bom/{itemCode}", async (string itemCode, MasterRepository r) => Results.Ok(await r.BomAsync(itemCode)));
+master.MapPut("/bom/{itemCode}", async (string itemCode, List<BomInput> lines, MasterRepository r) =>
+{ await r.SaveBomAsync(itemCode, lines); return Results.Ok(); }).RequireRateLimiting("writes");
 
 // ── ERP 에서 받은 발주 · 수주 ───────────────────────────────
 api.MapGet("/orders/purchase", async (IntegrationRepository repo) => Results.Ok(await repo.OrdersAsync("발주")));

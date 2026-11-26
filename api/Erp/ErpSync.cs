@@ -17,10 +17,16 @@ public sealed class SyncLog
     public string Message { get; init; } = "";
 }
 
-/// <summary>ERP → MES 수신: 발주 · 수주를 증분(updated_at 기준)으로 받아 MES 사본 테이블에 반영</summary>
+/// <summary>
+/// ERP → MES 수신. 기준정보(품목 · 거래처)와 발주 · 수주를 updated_at 기준 증분으로 받아 MES 에 반영.
+/// 기준정보를 먼저 받아야 발주 · 수주의 품목을 확인할 수 있으므로 Kinds 순서가 중요함.
+/// </summary>
 public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<ErpSyncService> log)
 {
-    public static readonly string[] Kinds = ["발주", "주문"];
+    public static readonly string[] Kinds = ["품목", "거래처", "발주", "주문"];
+    public static readonly string[] MasterKinds = ["품목", "거래처"];
+    public static readonly string[] OrderKinds = ["발주", "주문"];
+
     private readonly SemaphoreSlim _gate = new(1, 1);   // 자동 · 수동 수신이 겹치지 않게
 
     public async Task<SyncLog?> SyncAsync(string kind, string triggerBy, CancellationToken ct)
@@ -36,6 +42,49 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
         }
     }
 
+    // 받아온 묶음: 건수 · 다음 기준 시각 · 화면 표시용 번호 · 반영 방법
+    private sealed record Batch(
+        int Fetched, DateTime? MaxUpdatedAt, List<string> Keys,
+        Func<NpgsqlConnection, CancellationToken, Task<(int Applied, List<string> Problems, string? Note)>> Apply);
+
+    private async Task<Batch> FetchAsync(string kind, DateTime? since, CancellationToken ct)
+    {
+        switch (kind)
+        {
+            case "품목":
+            {
+                var items = await erp.GetItemsAsync(since, ct);
+                return new(items.Count, items.Count > 0 ? items.Max(x => x.UpdatedAt) : null,
+                    items.Select(x => x.ItemCode).ToList(), (c, t) => ApplyItemsAsync(c, items, t));
+            }
+            case "거래처":
+            {
+                var partners = await erp.GetPartnersAsync(since, ct);
+                return new(partners.Count, partners.Count > 0 ? partners.Max(x => x.UpdatedAt) : null,
+                    partners.Select(x => x.PartnerCode).ToList(), (c, t) => ApplyPartnersAsync(c, partners, t));
+            }
+            default:
+            {
+                var orders = kind == "발주"
+                    ? await erp.GetPurchaseOrdersAsync(since, ct)
+                    : await erp.GetSalesOrdersAsync(since, ct);
+                return new(orders.Count, orders.Count > 0 ? orders.Max(x => x.UpdatedAt) : null,
+                    orders.Select(x => x.OrderNo).ToList(), async (c, t) =>
+                    {
+                        var applied = 0;
+                        var problems = new List<string>();
+                        foreach (var o in orders)
+                        {
+                            var error = await ApplyOrderAsync(c, kind, o, t);
+                            if (error is null) applied++;
+                            else problems.Add($"{o.OrderNo}: {error}");
+                        }
+                        return (applied, problems, null);
+                    });
+            }
+        }
+    }
+
     private async Task<SyncLog?> SyncCoreAsync(string kind, string triggerBy, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
@@ -43,12 +92,10 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
         var since = await conn.ExecuteScalarAsync<DateTime?>(
             "SELECT last_updated_at FROM mes.erp_sync_cursor WHERE kind = @kind", new { kind });
 
-        List<ErpOrder> orders;
+        Batch batch;
         try
         {
-            orders = kind == "발주"
-                ? await erp.GetPurchaseOrdersAsync(since, ct)
-                : await erp.GetSalesOrdersAsync(since, ct);
+            batch = await FetchAsync(kind, since, ct);
         }
         catch (ErpException ex)
         {
@@ -57,49 +104,82 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
         }
 
         // 자동 수신인데 새 데이터가 없으면 로그는 남기지 않고 '마지막 확인' 만 갱신 (1분마다 빈 로그 방지)
-        if (orders.Count == 0 && triggerBy == "자동")
+        if (batch.Fetched == 0 && triggerBy == "자동")
         {
             await MarkCheckedAsync(conn, kind, "성공", "새 데이터 없음");
             return null;
         }
 
-        var applied = 0;
-        var problems = new List<string>();
-        foreach (var order in orders)
-        {
-            var error = await ApplyAsync(conn, kind, order, ct);
-            if (error is null) applied++;
-            else problems.Add($"{order.OrderNo}: {error}");
-        }
+        var (applied, problems, note) = await batch.Apply(conn, ct);
 
-        if (orders.Count > 0)
+        if (batch.MaxUpdatedAt is { } at)
         {
             await conn.ExecuteAsync("""
                 INSERT INTO mes.erp_sync_cursor (kind, last_updated_at) VALUES (@kind, @at)
                 ON CONFLICT (kind) DO UPDATE SET last_updated_at = EXCLUDED.last_updated_at
-                """, new { kind, at = orders.Max(o => o.UpdatedAt) });
+                """, new { kind, at });
         }
 
         var status = problems.Count == 0 ? "성공" : applied > 0 ? "부분성공" : "실패";
-        var message = problems.Count == 0
-            ? (orders.Count == 0 ? "새 데이터 없음" : $"{string.Join(", ", orders.Select(o => o.OrderNo).Take(5))}{(orders.Count > 5 ? " 외" : "")}")
-            : string.Join(" / ", problems);
+        var message = problems.Count > 0
+            ? string.Join(" / ", problems)
+            : batch.Fetched == 0
+                ? "새 데이터 없음"
+                : $"{string.Join(", ", batch.Keys.Take(5))}{(batch.Keys.Count > 5 ? $" 외 {batch.Keys.Count - 5}건" : "")}";
+        if (note is not null) message = $"{message} · {note}";
         if (problems.Count > 0) log.LogWarning("{Kind} 수신 일부 실패: {Message}", kind, message);
+
         await MarkCheckedAsync(conn, kind, status, message);
-        return await WriteLogAsync(conn, kind, triggerBy, started, orders.Count, applied, problems.Count, status, message);
+        return await WriteLogAsync(conn, kind, triggerBy, started, batch.Fetched, applied, problems.Count, status, message);
     }
 
-    // 종류별 마지막 확인 결과 (화면의 '발주 수신 · 주문 수신' 상태)
-    private static Task MarkCheckedAsync(NpgsqlConnection conn, string kind, string status, string message) =>
-        conn.ExecuteAsync("""
-            INSERT INTO mes.erp_sync_cursor (kind, last_checked_at, last_status, last_message)
-            VALUES (@kind, now(), @status, left(@message, 500))
-            ON CONFLICT (kind) DO UPDATE
-                SET last_checked_at = now(), last_status = EXCLUDED.last_status, last_message = EXCLUDED.last_message
-            """, new { kind, status, message });
+    // 품목: ERP 값(이름 · 구분 · 단위)만 덮어쓰고 MES 전용 속성(기본 창고 · 라인 · 안전재고 · 사용)은 유지
+    private static async Task<(int, List<string>, string?)> ApplyItemsAsync(NpgsqlConnection conn, List<ErpItem> items, CancellationToken ct)
+    {
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var inserted = 0;
+        foreach (var it in items)
+        {
+            var isNew = await conn.ExecuteScalarAsync<bool>("""
+                INSERT INTO mes.item (item_code, item_name, item_type, unit, default_wh_code, erp_synced_at, updated_at)
+                VALUES (@ItemCode, @ItemName, @ItemType, @Unit,
+                        (SELECT wh_code FROM mes.warehouse
+                         WHERE use_yn AND wh_type = CASE WHEN @ItemType = '원자재' THEN '원자재' ELSE '제품' END
+                         ORDER BY wh_code LIMIT 1),
+                        now(), now())
+                ON CONFLICT (item_code) DO UPDATE
+                    SET item_name = EXCLUDED.item_name, item_type = EXCLUDED.item_type, unit = EXCLUDED.unit,
+                        erp_synced_at = now(), updated_at = now()
+                RETURNING (xmax = 0)
+                """, it, tx);
+            if (isNew) inserted++;
+        }
+
+        // 새 품목이 생기면 '품목 미등록' 으로 건너뛴 발주 · 수주가 있을 수 있으니 처음부터 다시 받게 함
+        if (inserted > 0)
+            await conn.ExecuteAsync(
+                "UPDATE mes.erp_sync_cursor SET last_updated_at = NULL WHERE kind = ANY(@kinds)",
+                new { kinds = OrderKinds }, tx);
+
+        await tx.CommitAsync(ct);
+        return (items.Count, [], inserted > 0 ? $"신규 {inserted}건 → 발주 · 수주 재수신" : null);
+    }
+
+    private static async Task<(int, List<string>, string?)> ApplyPartnersAsync(NpgsqlConnection conn, List<ErpPartner> partners, CancellationToken ct)
+    {
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync("""
+            INSERT INTO mes.partner (partner_code, partner_name, partner_type, erp_synced_at)
+            VALUES (@PartnerCode, @PartnerName, @PartnerType, now())
+            ON CONFLICT (partner_code) DO UPDATE
+                SET partner_name = EXCLUDED.partner_name, partner_type = EXCLUDED.partner_type, erp_synced_at = now()
+            """, partners, tx);
+        await tx.CommitAsync(ct);
+        return (partners.Count, [], null);
+    }
 
     // 주문 1건 = 트랜잭션 1개. MES 에 없는 품목이 있으면 그 건만 건너뜀
-    private static async Task<string?> ApplyAsync(NpgsqlConnection conn, string kind, ErpOrder o, CancellationToken ct)
+    private static async Task<string?> ApplyOrderAsync(NpgsqlConnection conn, string kind, ErpOrder o, CancellationToken ct)
     {
         var codes = o.Lines.Select(l => l.ItemCode).Distinct().ToArray();
         var known = (await conn.QueryAsync<string>(
@@ -135,6 +215,15 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
         return null;
     }
 
+    // 종류별 마지막 확인 결과 (화면의 '수신' 상태)
+    private static Task MarkCheckedAsync(NpgsqlConnection conn, string kind, string status, string message) =>
+        conn.ExecuteAsync("""
+            INSERT INTO mes.erp_sync_cursor (kind, last_checked_at, last_status, last_message)
+            VALUES (@kind, now(), @status, left(@message, 500))
+            ON CONFLICT (kind) DO UPDATE
+                SET last_checked_at = now(), last_status = EXCLUDED.last_status, last_message = EXCLUDED.last_message
+            """, new { kind, status, message });
+
     private static Task<SyncLog> WriteLogAsync(NpgsqlConnection conn, string kind, string triggerBy, DateTime started,
         int fetched, int applied, int skipped, string status, string message) =>
         conn.QuerySingleAsync<SyncLog>("""
@@ -144,7 +233,7 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
             """, new { kind, triggerBy, started, fetched, applied, skipped, status, message });
 }
 
-/// <summary>1분마다 발주 · 수주 자동 수신</summary>
+/// <summary>1분마다 기준정보 → 발주 · 수주 순서로 자동 수신</summary>
 public sealed class ErpSyncWorker(ErpSyncService sync, ErpOptions options, ILogger<ErpSyncWorker> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
