@@ -24,6 +24,7 @@ public sealed class OrderHeader
     public string PartnerName { get; init; } = "";
     public string DueDate { get; init; } = "";
     public string Status { get; init; } = "";
+    public string Remark { get; init; } = "";
     public DateTime UpdatedAt { get; init; }
     public List<OrderLine> Lines { get; } = [];
 }
@@ -95,7 +96,7 @@ public sealed class ErpStore(NpgsqlDataSource db)
         var headers = (await conn.QueryAsync<OrderHeader>($"""
             SELECT o.{no} AS order_no, to_char(o.{date}, 'YYYY-MM-DD') AS order_date,
                    o.partner_code, p.partner_name, to_char(o.due_date, 'YYYY-MM-DD') AS due_date,
-                   o.status, o.updated_at
+                   o.status, o.remark, o.updated_at
             FROM erp.{h} o JOIN erp.partner p ON p.partner_code = o.partner_code
             WHERE @since::timestamptz IS NULL OR o.updated_at > @since
             ORDER BY o.updated_at, o.{no}

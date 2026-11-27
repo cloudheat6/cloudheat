@@ -310,3 +310,8 @@ a.step:hover { border-color: var(--accent); }
   .toolbar-actions { margin-left: 0; }
   .search { flex: 1 1 100%; }
 }
+
+/* ── 기초재고 ─────────────────────────────── */
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--text); cursor: pointer; }
+.check input { accent-color: var(--accent); }
+.grid-box .cell-changed { background: color-mix(in srgb, var(--warn) 18%, transparent); }

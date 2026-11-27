@@ -3,6 +3,7 @@
 using Cloudheat.MockErp;
 using Dapper;
 using Npgsql;
+using System.Threading.RateLimiting;
 
 DefaultTypeMap.MatchNamesWithUnderscores = true;
 
@@ -15,6 +16,15 @@ if (string.IsNullOrWhiteSpace(options.ApiKey)) throw new InvalidOperationExcepti
 builder.Services.AddSingleton(new NpgsqlDataSourceBuilder(cs).Build());
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<ErpStore>();
+builder.Services.AddSingleton<ErpUiStore>();
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy("writes", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
+            ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1) }));
+});
 
 var app = builder.Build();
 
@@ -26,6 +36,8 @@ using (var reader = new StreamReader(stream))
     await using var cmd = new NpgsqlCommand(await reader.ReadToEndAsync(), conn);
     await cmd.ExecuteNonQueryAsync();
 }
+
+app.UseRateLimiter();
 
 app.MapGet("/erp/health", async (NpgsqlDataSource db) =>
 {
@@ -76,6 +88,26 @@ v1.MapPost("/documents", async (MesDocument doc, ErpStore store) =>
 
 v1.MapGet("/documents", async (int? limit, ErpStore store) =>
     Results.Ok(await store.ListDocumentsAsync(Math.Clamp(limit ?? 50, 1, 200))));
+
+// ── ERP 화면(erp.cloudheat.kr)용 API ─────────────────────────
+// API 키 · 가상 장애 없음. 공개 데모라 쓰기 요청은 IP 당 분당 60회로 제한
+var ui = app.MapGroup("/erp/ui");
+ui.AddEndpointFilter(async (ctx, next) =>
+{
+    try { return await next(ctx); }
+    catch (UiException ex) { return Results.Json(new { message = ex.Message }, statusCode: ex.Status); }
+});
+ui.MapGet("/health", () => Results.Ok(new { status = "ok", version = AppInfo.Version }));
+ui.MapGet("/items", async (ErpUiStore s) => Results.Ok(await s.ItemsAsync()));
+ui.MapGet("/partners", async (ErpUiStore s) => Results.Ok(await s.PartnersAsync()));
+ui.MapGet("/orders/{kind}", async (string kind, ErpUiStore s) => Results.Ok(await s.ListAsync(kind)));
+ui.MapPost("/orders/{kind}", async (string kind, OrderInput body, ErpUiStore s) =>
+    Results.Ok(new { orderNo = await s.CreateAsync(kind, body) })).RequireRateLimiting("writes");
+ui.MapPut("/orders/{kind}/{no}", async (string kind, string no, OrderInput body, ErpUiStore s) =>
+{ await s.UpdateAsync(kind, no, body); return Results.Ok(); }).RequireRateLimiting("writes");
+ui.MapPost("/orders/{kind}/{no}/cancel", async (string kind, string no, ErpUiStore s) =>
+{ await s.CancelAsync(kind, no); return Results.Ok(); }).RequireRateLimiting("writes");
+ui.MapGet("/documents", async (ErpUiStore s) => Results.Ok(await s.DocumentsAsync()));
 
 app.Run();
 

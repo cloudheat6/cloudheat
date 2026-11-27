@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import WorkOrders from './pages/WorkOrders.jsx'
 import Stock from './pages/Stock.jsx'
 import StockTx from './pages/StockTx.jsx'
+import Opening from './pages/Opening.jsx'
 import Orders from './pages/Orders.jsx'
 import Integration from './pages/Integration.jsx'
 import Planned from './pages/Planned.jsx'
@@ -53,7 +54,7 @@ export const MENU = [
     items: [
       { to: '/inventory/moves', label: '재고이동관리', icon: '⇄', planned: '창고 간 재고 이동 (출고 창고 −, 입고 창고 +)' },
       { to: '/inventory/adjustments', label: '재고조정관리', icon: '±', planned: '실사 결과와 장부 재고의 차이를 조정 (사유 기록)' },
-      { to: '/inventory/opening', label: '기초재고관리', icon: '◫', planned: '시스템 시작 시점의 품목 × 창고별 재고 등록' },
+      { to: '/inventory/opening', label: '기초재고관리', icon: '◫' },
       { to: '/inventory/stock', label: '현재고조회', icon: '▤' },
       { to: '/inventory/transactions', label: '재고수불조회', icon: '≡' },
     ],
@@ -126,6 +127,7 @@ export default function App() {
             <Route path="/purchase/orders" element={<Orders kind="발주" />} />
             <Route path="/sales/orders" element={<Orders kind="주문" />} />
             <Route path="/production/work-orders" element={<WorkOrders />} />
+            <Route path="/inventory/opening" element={<Opening />} />
             <Route path="/inventory/stock" element={<Stock />} />
             <Route path="/inventory/transactions" element={<StockTx />} />
             <Route path="/integration" element={<Integration />} />

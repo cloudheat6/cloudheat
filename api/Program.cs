@@ -16,6 +16,7 @@ builder.Services.AddSingleton<WorkOrderRepository>();
 builder.Services.AddSingleton<InventoryRepository>();
 builder.Services.AddSingleton<IntegrationRepository>();
 builder.Services.AddSingleton<MasterRepository>();
+builder.Services.AddSingleton<OpeningRepository>();
 
 // ERP 연동: 클라이언트 · 수신(1분 주기) · 송신(outbox, 3초 주기)
 var erpOptions = builder.Configuration.GetSection("Erp").Get<ErpOptions>() ?? new ErpOptions();
@@ -92,6 +93,18 @@ api.MapGet("/inventory/stock", async (InventoryRepository repo) =>
 
 api.MapGet("/inventory/transactions", async (int? limit, string? itemCode, InventoryRepository repo) =>
     Results.Ok(await repo.TransactionsAsync(Math.Clamp(limit ?? 500, 1, 2000), itemCode)));
+
+// 기초재고: 창고별 조회 · 저장 (바뀐 품목만, 차이만큼 '기초' 수불)
+var opening = api.MapGroup("/inventory/opening");
+opening.AddEndpointFilter(async (ctx, next) =>
+{
+    try { return await next(ctx); }
+    catch (InventoryException ex) { return Results.Json(new { message = ex.Message }, statusCode: ex.Status); }
+    catch (PostgresException ex) when (ex.SqlState == "P0001") { return Results.Json(new { message = ex.MessageText }, statusCode: 409); }
+});
+opening.MapGet("/{whCode}", async (string whCode, OpeningRepository r) => Results.Ok(await r.ListAsync(whCode)));
+opening.MapPut("/{whCode}", async (string whCode, List<OpeningInput> lines, OpeningRepository r) =>
+    Results.Ok(new { changed = await r.SaveAsync(whCode, lines) })).RequireRateLimiting("writes");
 
 // ── 기준정보 ───────────────────────────────────────────────
 var master = api.MapGroup("/master");

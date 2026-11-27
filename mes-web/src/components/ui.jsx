@@ -3,7 +3,7 @@ const TONES = {
   대기: 'muted', 진행: 'info', 완료: 'ok', 지연: 'bad',
   성공: 'ok', 실패: 'bad', 부분성공: 'warn',
   기초: 'muted', 입고: 'ok', 생산입고: 'ok', 생산투입: 'warn', 출고: 'info', 이동: 'muted', 조정: 'warn',
-  원자재: 'muted', 제품: 'info', 확정: 'info',
+  원자재: 'muted', 제품: 'info', 확정: 'info', 취소: 'bad',
   자동: 'muted', 수동: 'info',
 }
 

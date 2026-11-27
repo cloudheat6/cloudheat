@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { api, useApi } from '../lib/api.js'
 import { DataGrid } from '../lib/grid.jsx'
-import { ago, fmtDateTime, fmtNum } from '../lib/format.js'
+import { ago, erpWebUrl, fmtDateTime, fmtNum } from '../lib/format.js'
 import { useToast } from '../lib/toast.jsx'
 import { Badge, BadgeCell, ErrorBox, Kpi, PageHeader } from '../components/ui.jsx'
 
 const TEXT = {
-  발주: { path: '/orders/purchase', no: '발주번호', date: '발주일', partner: '매입처', done: '입고', next: '입고관리에서 이 발주로 입고를 등록해요.' },
-  주문: { path: '/orders/sales', no: '주문번호', date: '주문일', partner: '고객사', done: '출고', next: '출고관리에서 이 주문으로 출고를 등록해요.' },
+  발주: { path: '/orders/purchase', erp: '/purchase', no: '발주번호', date: '발주일', partner: '매입처', done: '입고', next: '입고관리에서 이 발주로 입고를 등록해요.' },
+  주문: { path: '/orders/sales', erp: '/sales', no: '주문번호', date: '주문일', partner: '고객사', done: '출고', next: '출고관리에서 이 주문으로 출고를 등록해요.' },
 }
 
 export default function Orders({ kind }) {
@@ -60,6 +60,9 @@ export default function Orders({ kind }) {
   return (
     <>
       <PageHeader title={`${kind}관리`} desc={`ERP에서 확정된 ${kind}을 1분마다 자동으로 받아와요. ${t.next}`}>
+        <a className="btn ghost" href={erpWebUrl(t.erp)} target="_blank" rel="noreferrer">
+          가상 ERP에서 {kind === '발주' ? '발주' : '수주'} 입력 ↗
+        </a>
         <button
           className="btn ghost"
           disabled={busy}

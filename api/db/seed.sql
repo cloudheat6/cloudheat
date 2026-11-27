@@ -1,5 +1,5 @@
--- MES 데모 데이터 초기화 (가상 데이터)
--- 서버에서 매일 04:00 에 실행돼서 방문자가 수정한 내용을 되돌립니다.
+-- MES 데이터 초기화: 기준정보만 남기고 거래 데이터(작업지시 · 재고 · 발주 · 주문 · 연동 이력)는 비움
+-- 수동 실행 전용 (deploy.cmd -ResetData). 기초재고는 기초재고관리 화면에서 직접 등록
 SET search_path = mes;
 
 BEGIN;
@@ -38,6 +38,12 @@ INSERT INTO warehouse (wh_code, wh_name) VALUES
     ('WH-RM', '원자재창고'), ('WH-WIP', '현장창고'), ('WH-FG', '제품창고')
 ON CONFLICT (wh_code) DO UPDATE SET wh_name = EXCLUDED.wh_name;
 
+-- 처음 설치할 때: 창고 구분 · 품목 기본 창고 (이미 정한 값은 유지)
+UPDATE warehouse SET wh_type = CASE wh_code WHEN 'WH-RM' THEN '원자재' WHEN 'WH-WIP' THEN '현장' ELSE '제품' END
+WHERE wh_code IN ('WH-RM', 'WH-WIP', 'WH-FG') AND wh_type = '일반';
+UPDATE item SET default_wh_code = CASE WHEN item_type = '원자재' THEN 'WH-RM' ELSE 'WH-FG' END
+WHERE default_wh_code IS NULL;
+
 INSERT INTO worker (worker_id, worker_name) VALUES
     (1, '김민준'), (2, '이서연'), (3, '박지훈'), (4, '최유진'),
     (5, '정하늘'), (6, '강도윤'), (7, '윤채원'), (8, '임태오')
@@ -57,87 +63,15 @@ INSERT INTO defect_type (defect_type_id, line_id, defect_name) VALUES
     (41, 4, '조립 누락'), (42, 4, '체결 불량'), (43, 4, '기능 불량'), (44, 4, '외관 스크래치')
 ON CONFLICT (defect_type_id) DO UPDATE SET line_id = EXCLUDED.line_id, defect_name = EXCLUDED.defect_name;
 
--- ── 작업지시 240건 재생성 ───────────────────────────────
-TRUNCATE work_order RESTART IDENTITY CASCADE;
-
-SELECT setseed(0.20261125);   -- 시드 고정: 매번 같은 패턴, 날짜만 오늘 기준
-
-INSERT INTO work_order (wo_no, due_date, item_code, worker_id, plan_qty, prod_qty, defect_qty)
-SELECT 'WO-' || to_char(current_date, 'YYMM') || '-' || lpad(p.n::text, 4, '0'),
-       current_date + p.day_offset,
-       p.item_code,
-       p.worker_id,
-       p.plan_qty,
-       p.prod_qty,
-       LEAST(p.prod_qty, round(p.prod_qty * p.defect_rate))::integer
-FROM (
-    SELECT r.n, r.day_offset, r.item_code, r.worker_id, r.plan_qty,
-           CASE
-               WHEN prog.progress >= 1 THEN r.plan_qty
-               ELSE round(r.plan_qty * prog.progress)::integer
-           END AS prod_qty,
-           CASE WHEN r.r3 < 0.15 THEN 0.02 + r.r4 * 0.05 ELSE r.r4 * 0.015 END AS defect_rate
-    FROM (
-        SELECT g.n,
-               (floor(random() * 21) - 12)::integer AS day_offset,          -- 납기: 12일 전 ~ 8일 후
-               (ARRAY['BRK-A100','PLT-F080','FRM-D450','SFT-E120',
-                      'HSG-B220','CVR-C310','ASM-M500','ASM-K210'])[1 + floor(random() * 8)::integer] AS item_code,
-               (1 + floor(random() * 8))::smallint AS worker_id,
-               (round((200 + random() * 1800) / 10) * 10)::integer AS plan_qty,
-               random() AS r1, random() AS r2, random() AS r3, random() AS r4
-        FROM generate_series(1, 240) AS g(n)
-        OFFSET 0   -- random() 이 행마다 한 번만 평가되도록 서브쿼리 고정
-    ) r
-    CROSS JOIN LATERAL (
-        SELECT CASE
-                   WHEN r.day_offset < -3 THEN CASE WHEN r.r1 < 0.80 THEN 1 ELSE 0.60 + r.r2 * 0.35 END
-                   WHEN r.day_offset <  0 THEN CASE WHEN r.r1 < 0.50 THEN 1 ELSE 0.30 + r.r2 * 0.60 END
-                   WHEN r.day_offset <  4 THEN CASE WHEN r.r1 < 0.25 THEN 0 ELSE 0.10 + r.r2 * 0.85 END
-                   ELSE                        CASE WHEN r.r1 < 0.60 THEN 0 ELSE r.r2 * 0.40 END
-               END AS progress
-    ) prog
-) p
-ORDER BY p.n;
-
--- 공정별 손실 가중치
-INSERT INTO wo_process_weight (wo_id, seq, weight)
-SELECT w.wo_id, rs.seq, round((0.2 + random())::numeric, 3)
-FROM work_order w
-JOIN item i          ON i.item_code = w.item_code
-JOIN routing_step rs ON rs.line_id  = i.line_id
-ORDER BY w.wo_id, rs.seq;
-
--- 불량 유형: 라인별 4개 중 3개를 골라 가중치 부여
-INSERT INTO wo_defect_weight (wo_id, defect_type_id, weight)
-SELECT x.wo_id, x.defect_type_id, x.weight
-FROM (
-    SELECT w.wo_id,
-           dt.defect_type_id,
-           round((0.1 + random())::numeric, 3) AS weight,
-           row_number() OVER (PARTITION BY w.wo_id ORDER BY random()) AS rn
-    FROM work_order w
-    JOIN item i         ON i.item_code = w.item_code
-    JOIN defect_type dt ON dt.line_id  = i.line_id
-) x
-WHERE x.rn <= 3;
-
--- ── 재고 · ERP 연동 데이터 초기화 ─────────────────────────
-TRUNCATE stock, stock_tx, erp_outbox, erp_sync_log, erp_sync_cursor, purchase_order, sales_order
+-- ── 거래 데이터 비우기 ─────────────────────────────────
+-- 작업지시(+ 공정 · 불량 가중치), 재고 · 수불, 발주 · 주문 사본, ERP 송수신 이력
+-- 수신 기준 시각도 비워서 ERP 의 품목 · 거래처 · 발주 · 주문을 처음부터 다시 받게 함
+TRUNCATE work_order, stock, stock_tx, erp_outbox, erp_sync_log, erp_sync_cursor, purchase_order, sales_order
     RESTART IDENTITY CASCADE;
-
--- 기초재고: 원자재 → 원자재창고, 제품 → 제품창고
-SELECT count(*) AS opening_stock
-FROM (
-    SELECT fn_post_stock(
-               '기초', i.item_code,
-               CASE WHEN i.item_type = '원자재' THEN 'WH-RM' ELSE 'WH-FG' END,
-               CASE WHEN i.item_type = '원자재' THEN 500 + floor(random() * 4500)
-                    ELSE 50 + floor(random() * 450) END::integer,
-               '기초재고', 'OPEN-' || to_char(current_date, 'YYMM'), '데모 기초재고')
-    FROM item i
-    ORDER BY i.item_code
-) x;
+ALTER SEQUENCE doc_seq RESTART;
 
 COMMIT;
 
-SELECT count(*) AS work_orders FROM work_order;
+SELECT (SELECT count(*) FROM item)       AS items,
+       (SELECT count(*) FROM work_order) AS work_orders,
+       (SELECT count(*) FROM stock)      AS stock_rows;

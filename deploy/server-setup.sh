@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 서버 설정 (sudo 로 실행됨, 여러 번 실행해도 안전). 사용법: sudo bash server-setup.sh <user> <app> <domain>
-#   - Caddy (cloudheat.kr · mes.cloudheat.kr)
+#   - Caddy (cloudheat.kr · mes.cloudheat.kr · erp.cloudheat.kr)
 #   - PostgreSQL 16 + MES 스키마(mes) + 가상 ERP 스키마(erp)
 #   - ASP.NET Core 서비스 2개: MES API(5080) · 가상 ERP(5090)
 set -euo pipefail
@@ -10,6 +10,7 @@ APP="$2"
 DOMAIN="$3"
 SITE_DIR="/var/www/$APP"
 MES_DIR="/var/www/$APP-mes"
+ERP_WEB_DIR="/var/www/$APP-erp-web"
 API_DIR="/opt/$APP-api"
 ERP_DIR="/opt/$APP-erp"
 DB_NAME="$APP"
@@ -51,7 +52,7 @@ systemctl enable --now postgresql
 DOTNET_BIN="$(command -v dotnet)"
 
 # ── 정적 사이트 폴더 ──────────────────────────────────────
-for dir in "$SITE_DIR" "$MES_DIR"; do
+for dir in "$SITE_DIR" "$MES_DIR" "$ERP_WEB_DIR"; do
   mkdir -p "$dir/releases"
   if [ ! -e "$dir/current" ]; then
     mkdir -p "$dir/releases/initial"
@@ -219,6 +220,7 @@ if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
   ufw allow 80/tcp
   ufw allow 443/tcp
   ufw allow from 192.168.0.0/16 to any port 8080 proto tcp
+  ufw allow from 192.168.0.0/16 to any port 8090 proto tcp
 fi
 
 rm -f /tmp/$APP-Caddyfile /tmp/$APP-server-setup.sh /tmp/$APP-schema.sql /tmp/$APP-seed.sql /tmp/$APP-erp-schema.sql /tmp/$APP-erp-seed.sql

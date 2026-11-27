@@ -68,3 +68,7 @@ CREATE SEQUENCE IF NOT EXISTS doc_seq;
 -- MES 가 품목 · 거래처를 증분으로 가져가도록 변경 시각
 ALTER TABLE item    ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE partner ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+-- 발주 · 수주 비고 (ERP 화면에서 입력)
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS remark varchar(200) NOT NULL DEFAULT '';
+ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS remark varchar(200) NOT NULL DEFAULT '';

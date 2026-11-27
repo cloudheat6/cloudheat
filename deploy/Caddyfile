@@ -41,6 +41,22 @@
 	}
 }
 
+# 가상 ERP 화면 (erp.cloudheat.kr): 화면 + /erp/ui → 가상 ERP 서버
+# MES 연동 API(/erp/v1)는 밖으로 열지 않음 (서버 내부 127.0.0.1 로만 MES 가 호출)
+(erp) {
+	encode zstd gzip
+
+	handle /erp/ui/* {
+		reverse_proxy 127.0.0.1:5090
+	}
+	handle /erp/* {
+		respond "Not Found" 404
+	}
+	handle {
+		import spa /var/www/__APP__-erp-web/current
+	}
+}
+
 __DOMAIN__ {
 	import site
 }
@@ -49,15 +65,23 @@ www.__DOMAIN__ {
 	redir https://__DOMAIN__{uri} permanent
 }
 
+erp.__DOMAIN__ {
+	import erp
+}
+
 mes.__DOMAIN__ {
 	import mes
 }
 
-# 내부망 확인용: http://192.168.0.10 (포트폴리오), http://192.168.0.10:8080 (MES)
+# 내부망 확인용: http://192.168.0.10 (포트폴리오), :8080 (MES), :8090 (가상 ERP 화면)
 :80 {
 	import site
 }
 
 :8080 {
 	import mes
+}
+
+:8090 {
+	import erp
 }

@@ -1,9 +1,10 @@
 ﻿# 빌드해서 리눅스 서버로 배포
-#   deploy.cmd                       전체 (가상 ERP → MES API → MES 화면 → 포트폴리오)
+#   deploy.cmd                       전체 (가상 ERP → MES API → MES 화면 → ERP 화면 → 포트폴리오)
 #   deploy.cmd -Mes                  MES 화면만      (mes-web → mes.cloudheat.kr)
 #   deploy.cmd -Site                 포트폴리오만    (site → cloudheat.kr)
 #   deploy.cmd -Api                  MES API 만      (api)
-#   deploy.cmd -Erp                  가상 ERP 만     (mock-erp)
+#   deploy.cmd -Erp                  가상 ERP 서버만 (mock-erp)
+#   deploy.cmd -ErpWeb               가상 ERP 화면만 (erp-web → erp.cloudheat.kr)
 #   여러 개 조합 가능: deploy.cmd -Api -Mes
 #   deploy.cmd -SkipBuild            빌드 생략
 #   deploy.cmd -Rollback [-Mes ...]  이전 버전으로 (선택한 것만, 없으면 전체)
@@ -18,6 +19,7 @@ param(
     [switch]$Mes,
     [switch]$Api,
     [switch]$Erp,
+    [switch]$ErpWeb,
     [switch]$SkipBuild,
     [switch]$Rollback,
     [switch]$List,
@@ -34,12 +36,13 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 # 컴포넌트: 이름 → 빌드 방법 · 결과물 폴더
 $Components = [ordered]@{
-    erp  = @{ Kind = 'dotnet'; Src = 'mock-erp'; Check = 'Cloudheat.MockErp.dll' }
-    api  = @{ Kind = 'dotnet'; Src = 'api';      Check = 'Cloudheat.Api.dll' }
-    mes  = @{ Kind = 'vite';   Src = 'mes-web';  Check = 'index.html' }
-    site = @{ Kind = 'vite';   Src = 'site';     Check = 'index.html' }
+    erp    = @{ Kind = 'dotnet'; Src = 'mock-erp'; Check = 'Cloudheat.MockErp.dll' }
+    api    = @{ Kind = 'dotnet'; Src = 'api';      Check = 'Cloudheat.Api.dll' }
+    mes    = @{ Kind = 'vite';   Src = 'mes-web';  Check = 'index.html' }
+    erpweb = @{ Kind = 'vite';   Src = 'erp-web';  Check = 'index.html' }
+    site   = @{ Kind = 'vite';   Src = 'site';     Check = 'index.html' }
 }
-$picked = @($Components.Keys | Where-Object { (Get-Variable -Name $_ -ValueOnly).IsPresent })
+$picked = @($Components.Keys | Where-Object { (Get-Variable -Name $_ -ValueOnly).IsPresent })   # 변수 이름은 대소문자 무시 (erpweb → $ErpWeb)
 if ($picked.Count -eq 0) { $picked = @($Components.Keys) }
 
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
@@ -85,12 +88,12 @@ if ($Bump) {
     Step "버전 올림: $Version → $New"
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     [IO.File]::WriteAllText($VersionFile, "$New`n", $utf8)
-    foreach ($pkg in 'site\package.json', 'mes-web\package.json') {
+    foreach ($pkg in 'site\package.json', 'mes-web\package.json', 'erp-web\package.json') {
         $p = Join-Path $Root $pkg
         $s = [regex]::Replace([IO.File]::ReadAllText($p), '"version":\s*"[^"]*"', "`"version`": `"$New`"", 1)
         [IO.File]::WriteAllText($p, $s, $utf8)
     }
-    Invoke-Git add VERSION site/package.json mes-web/package.json
+    Invoke-Git add VERSION site/package.json mes-web/package.json erp-web/package.json
     Invoke-Git commit -q -m "release: v$New"
     Invoke-Git tag -a "v$New" -m "v$New"
     $Version = $New
@@ -152,6 +155,7 @@ Step "확인"
 $checks = @()
 if ($picked -contains 'site') { $checks += "http://${Server}/" }
 if ($picked -contains 'mes')  { $checks += "http://${Server}:8080/" }
+if ($picked -contains 'erpweb') { $checks += "http://${Server}:8090/" }
 if ($picked -contains 'api' -or $picked -contains 'erp') { $checks += "http://${Server}:8080/api/integration/summary" }
 foreach ($url in $checks) {
     try {
