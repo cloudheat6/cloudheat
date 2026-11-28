@@ -4,7 +4,7 @@ SET search_path = erp;
 
 BEGIN;
 
-TRUNCATE mes_document, purchase_order, sales_order RESTART IDENTITY CASCADE;
+TRUNCATE mes_document, goods_receipt, production_result, goods_issue, purchase_order, sales_order RESTART IDENTITY CASCADE;
 DELETE FROM item;
 DELETE FROM partner;
 ALTER SEQUENCE doc_seq RESTART;
