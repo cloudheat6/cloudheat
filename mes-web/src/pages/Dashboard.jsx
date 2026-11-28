@@ -44,7 +44,7 @@ export default function Dashboard() {
 
       <section className="flow">
         <div className="flow-row">
-          <Step to="/purchase/orders" title="발주관리" erp="ERP→" value={`${fmtNum(s?.receivedOrders?.purchase ?? 0)}건`} sub="ERP에서 수신" />
+          <Step to="/purchase/orders" title="발주조회" erp="ERP→" value={`${fmtNum(s?.receivedOrders?.purchase ?? 0)}건`} sub="ERP에서 수신" />
           <span className="flow-arrow">→</span>
           <Step to="/purchase/receipts" title="입고관리" erp="→ERP" stage value="—" />
           <span className="flow-arrow">→</span>
@@ -57,7 +57,7 @@ export default function Dashboard() {
           <Step to="/sales/shipments" title="출고관리" erp="→ERP" stage value="—" />
         </div>
         <div className="flow-row secondary">
-          <Step to="/sales/orders" title="주문관리" erp="ERP→" value={`${fmtNum(s?.receivedOrders?.sales ?? 0)}건`} sub="생산 · 출고의 근거" />
+          <Step to="/sales/orders" title="주문조회" erp="ERP→" value={`${fmtNum(s?.receivedOrders?.sales ?? 0)}건`} sub="생산 · 출고의 근거" />
           <span className="flow-hint">← 주문을 기준으로 생산하고 출고해요</span>
         </div>
       </section>
@@ -71,7 +71,7 @@ export default function Dashboard() {
             </Link>
           </div>
           <dl className="facts">
-            <dt>가상 ERP</dt>
+            <dt>ERP</dt>
             <dd>{integ.data == null ? '-' : integ.data.erpOnline ? <Badge tone="ok">연결됨</Badge> : <Badge tone="bad">응답 없음</Badge>}</dd>
             <dt>송신 대기 / 성공 / 실패</dt>
             <dd className="mono">
@@ -92,7 +92,7 @@ export default function Dashboard() {
             <li><strong>화면</strong> React · React Router · AG Grid Community</li>
             <li><strong>API</strong> ASP.NET Core (.NET 10) · Dapper · Npgsql</li>
             <li><strong>DB</strong> PostgreSQL 16 · PL/pgSQL 재고 함수 · 윈도 함수</li>
-            <li><strong>연동</strong> 가상 ERP 서버(별도 서비스 · API 키) · Outbox 송신 · 증분 수신</li>
+            <li><strong>연동</strong> ERP 서버(별도 서비스 · API 키) · Outbox 송신 · 증분 수신</li>
             <li><strong>서버</strong> Ubuntu · Caddy · systemd · Cloudflare</li>
             <li>
               <strong>버전</strong>

@@ -33,7 +33,7 @@ export const ago = (iso) => {
   return `${Math.floor(s / 86400)}일 전`
 }
 
-// 가상 ERP 화면 주소: 도메인이면 erp.<도메인>, 내부망(:8080)이면 같은 호스트 :8090
+// ERP 화면 주소: 도메인이면 erp.<도메인>, 내부망(:8080)이면 같은 호스트 :8090
 export const erpWebUrl = (path = '') => {
   const { protocol, hostname, port } = window.location
   if (hostname.startsWith('mes.')) return `${protocol}//erp.${hostname.slice(4)}${path}`

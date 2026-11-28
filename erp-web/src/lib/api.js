@@ -64,3 +64,11 @@ export const fmtDateTime = (iso) => {
   const x = new Date(iso)
   return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())} ${pad(x.getHours())}:${pad(x.getMinutes())}`
 }
+
+// MES 화면 주소: 도메인이면 mes.<도메인>, 내부망(:8090)이면 같은 호스트 :8080
+export const mesWebUrl = (path = '') => {
+  const { protocol, hostname, port } = window.location
+  if (hostname.startsWith('erp.')) return `${protocol}//mes.${hostname.slice(4)}${path}`
+  if (port === '8090') return `${protocol}//${hostname}:8080${path}`
+  return `https://mes.cloudheat.kr${path}`
+}

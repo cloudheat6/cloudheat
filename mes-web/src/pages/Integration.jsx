@@ -97,7 +97,7 @@ export default function Integration() {
     <>
       <PageHeader
         title="ERP 연동 모니터링"
-        desc="송신은 Transactional Outbox로 업무 저장과 같은 트랜잭션에 기록한 뒤 백그라운드에서 보내요. 가상 ERP는 일부러 15% 확률로 장애, 5% 확률로 응답 지연을 일으켜요."
+        desc="송신은 Transactional Outbox로 업무 저장과 같은 트랜잭션에 기록한 뒤 백그라운드에서 보내요. ERP는 일부러 15% 확률로 장애, 5% 확률로 응답 지연을 일으켜요."
       >
         <button className="btn ghost" disabled={busy} onClick={() => act(() => api('/integration/sync', { method: 'POST' }), (l) => `수신: ${l.map((x) => `${x.kind} ${x.status}`).join(', ') || '새 데이터 없음'}`)}>
           지금 수신
@@ -113,7 +113,7 @@ export default function Integration() {
       <ErrorBox error={summary.error} onRetry={summary.reload} />
 
       <section className="kpis">
-        <Kpi label="가상 ERP" value={erpOnline == null ? '-' : erpOnline ? '연결됨' : '응답 없음'} tone={erpOnline ? 'ok' : 'bad'} sub="127.0.0.1:5090" />
+        <Kpi label="ERP" value={erpOnline == null ? '-' : erpOnline ? '연결됨' : '응답 없음'} tone={erpOnline ? 'ok' : 'bad'} sub="127.0.0.1:5090" />
         <Kpi label="송신 대기" value={fmtNum(s?.outbox?.pending ?? 0)} tone={s?.outbox?.pending ? 'warn' : ''} sub="재시도 중 포함" />
         <Kpi label="송신 성공" value={fmtNum(s?.outbox?.success ?? 0)} tone="ok" />
         <Kpi label="송신 실패" value={fmtNum(s?.outbox?.failed ?? 0)} tone={s?.outbox?.failed ? 'bad' : 'ok'} sub="수동 재전송 필요" />
@@ -180,7 +180,7 @@ export default function Integration() {
   )
 }
 
-// 상대편(가상 ERP)이 실제로 받은 문서 — 송신이 정말 도착했는지 확인
+// 상대편(ERP)이 실제로 받은 문서 — 송신이 정말 도착했는지 확인
 function ErpDocuments() {
   const { data, error, reload, loading } = useApi('/integration/erp/documents')
   const cols = useMemo(
@@ -197,7 +197,7 @@ function ErpDocuments() {
   return (
     <>
       <div className="toolbar">
-        <span className="muted small">가상 ERP의 API를 직접 조회해요. ERP도 가끔 장애를 내니 실패하면 다시 시도하세요.</span>
+        <span className="muted small">ERP의 API를 직접 조회해요. ERP도 가끔 장애를 내니 실패하면 다시 시도하세요.</span>
         <div className="toolbar-actions">
           <button className="btn ghost" onClick={reload} disabled={loading}>
             새로고침

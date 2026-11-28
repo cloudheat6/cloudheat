@@ -7,7 +7,7 @@ export default function Documents() {
     <>
       <div className="page-head">
         <div>
-          <h1>MES 수신 문서</h1>
+          <h1>MES 수신 이력</h1>
           <p>MES 가 보낸 생산실적 · 입고 · 출고 문서예요. 같은 문서가 다시 와도 MES 문서번호로 걸러서 한 번만 반영해요.</p>
         </div>
         <button className="btn ghost" onClick={reload}>

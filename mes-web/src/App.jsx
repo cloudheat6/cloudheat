@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes, useLocation } from 'react-router'
 import { useApi } from './lib/api.js'
+import { erpWebUrl } from './lib/format.js'
 import Dashboard from './pages/Dashboard.jsx'
 import WorkOrders from './pages/WorkOrders.jsx'
 import Stock from './pages/Stock.jsx'
@@ -31,7 +32,7 @@ export const MENU = [
   {
     group: '구매',
     items: [
-      { to: '/purchase/orders', label: '발주관리', icon: '⇣' },
+      { to: '/purchase/orders', label: '발주조회', icon: '⇣' },
       { to: '/purchase/receipts', label: '입고관리', icon: '⊕', planned: '발주를 선택해서 입고 등록 → 원자재 재고 증가 → ERP 로 입고 전송' },
     ],
   },
@@ -45,7 +46,7 @@ export const MENU = [
   {
     group: '영업',
     items: [
-      { to: '/sales/orders', label: '주문관리', icon: '⇣' },
+      { to: '/sales/orders', label: '주문조회', icon: '⇣' },
       { to: '/sales/shipments', label: '출고관리', icon: '⊖', planned: '주문을 선택해서 출고 등록 → 제품 재고 감소 → ERP 로 출고 전송' },
     ],
   },
@@ -115,10 +116,15 @@ export default function App() {
             ☰
           </button>
           <div className="topbar-note">가상 데이터</div>
-          <NavLink to="/integration" className={`erp-pill ${erpOnline == null ? '' : erpOnline ? 'up' : 'down'}`}>
-            <i className="dot" />
-            가상 ERP {erpOnline == null ? '확인 중' : erpOnline ? '연결됨' : '응답 없음'}
-          </NavLink>
+          <div className="topbar-right">
+            <NavLink to="/integration" className={`erp-pill ${erpOnline == null ? '' : erpOnline ? 'up' : 'down'}`}>
+              <i className="dot" />
+              ERP {erpOnline == null ? '확인 중' : erpOnline ? '연결됨' : '응답 없음'}
+            </NavLink>
+            <a className="erp-go" href={erpWebUrl()} target="_blank" rel="noreferrer">
+              ERP로 이동
+            </a>
+          </div>
         </header>
 
         <main className="content">

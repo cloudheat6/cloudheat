@@ -76,6 +76,7 @@ nav { flex: 1; padding: 4px 10px 12px; }
 }
 .menu-btn { display: none; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 16px; cursor: pointer; }
 .topbar-note { flex: 1; font-size: 12.5px; color: var(--muted); }
+.topbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 kbd {
   padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px;
   background: var(--surface); font: 11px ui-monospace, Consolas, monospace; color: var(--text);
@@ -83,12 +84,19 @@ kbd {
 .erp-pill {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border);
-  font-size: 12.5px; text-decoration: none; color: var(--muted);
+  font-size: 12.5px; text-decoration: none; color: var(--muted); white-space: nowrap;
 }
 .erp-pill.up { color: var(--ok); }
 .erp-pill.down { color: var(--bad); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: inline-block; }
 .erp-pill.up .dot { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); }
+.erp-go {
+  display: inline-flex; align-items: center;
+  padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 600;
+  text-decoration: none; white-space: nowrap;
+}
+.erp-go:hover { border-color: var(--accent); color: var(--accent); }
 
 .content { padding: 24px; max-width: 1480px; width: 100%; }
 .scrim { display: none; }

@@ -3,8 +3,8 @@ import { api, fmtDateTime, fmtNum, today, useApi } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 
 const TEXT = {
-  purchase: { label: '발주', partner: '매입처', partnerType: '매입처', itemType: '원자재', due: 7, mes: 'MES 발주관리 → 입고' },
-  sales: { label: '수주', partner: '고객사', partnerType: '매출처', itemType: '제품', due: 14, mes: 'MES 주문관리 → 생산 · 출고' },
+  purchase: { label: '발주', partner: '매입처', partnerType: '매입처', itemType: '원자재', due: 7, mes: 'MES 발주조회 → 입고' },
+  sales: { label: '수주', partner: '고객사', partnerType: '매출처', itemType: '제품', due: 14, mes: 'MES 주문조회 → 생산 · 출고' },
 }
 
 const emptyLine = (itemCode = '') => ({ lineNo: null, itemCode, qty: '', unitPrice: '' })
@@ -108,7 +108,7 @@ export default function Orders({ kind }) {
     <>
       <div className="page-head">
         <div>
-          <h1>{t.label} 입력</h1>
+          <h1>{t.label}등록</h1>
           <p>
             여기서 저장한 {t.label}는 MES 가 1분마다 받아가요 ({t.mes}). 수정 · 취소도 그대로 전달돼요.
           </p>
