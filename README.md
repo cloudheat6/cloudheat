@@ -32,8 +32,10 @@ mes.cloudheat.kr  ─ Caddy ─┬ /api/* → MES API  127.0.0.1:5080 ─┐  (a
 
 ## 개발
 ```powershell
-cd mes-web; npm install; npm run dev     # http://localhost:5173 (/api 는 서버로 프록시)
-cd site;    npm install; npm run dev
+npm.cmd run dev                          # MES(localhost:5173) + 가상 ERP(localhost:5174) 동시 실행 · 브라우저 열기
+cd mes-web; npm.cmd run dev              # http://localhost:5173 (/api 는 서버로 프록시)
+cd erp-web; npm.cmd run dev              # http://localhost:5174 (/erp 는 서버로 프록시)
+cd site;    npm.cmd run dev              # http://localhost:5175
 dotnet build api; dotnet build mock-erp
 ```
 

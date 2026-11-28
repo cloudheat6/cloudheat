@@ -4,12 +4,17 @@ public sealed class WorkOrderRow
 {
     public int WoId { get; init; }
     public string WoNo { get; init; } = "";
+    public string WoDate { get; init; } = "";       // 'YYYY-MM-DD'
     public string DueDate { get; init; } = "";      // 'YYYY-MM-DD'
-    public short LineId { get; init; }
+    public short? LineId { get; init; }
     public string LineName { get; init; } = "";
     public string ItemCode { get; init; } = "";
     public string ItemName { get; init; } = "";
+    public string Unit { get; init; } = "";
+    public short WorkerId { get; init; }
     public string WorkerName { get; init; } = "";
+    public string? SoNo { get; init; }
+    public string WoStatus { get; init; } = "확정";
     public int PlanQty { get; init; }
     public int ProdQty { get; init; }
     public int DefectQty { get; init; }
@@ -17,6 +22,16 @@ public sealed class WorkOrderRow
     public string Status { get; init; } = "";
     public DateTime UpdatedAt { get; init; }
 }
+
+public sealed record SaveWorkOrder(
+    string ItemCode,
+    short? LineId,
+    short WorkerId,
+    string WoDate,
+    string DueDate,
+    int PlanQty,
+    string? SoNo = null,
+    string? Remark = null);
 
 public sealed record UpdateWorkOrder(int? ProdQty, int? DefectQty, string? Remark);
 

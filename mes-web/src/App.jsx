@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { NavLink, Route, Routes, useLocation } from 'react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useApi } from './lib/api.js'
 import { erpWebUrl } from './lib/format.js'
 import Dashboard from './pages/Dashboard.jsx'
@@ -66,13 +66,96 @@ export const MENU = [
 ]
 
 const PLANNED = MENU.flatMap((g) => g.items).filter((i) => i.planned)
+const CHOSEONG = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+
+const normMenu = (s) => s.replace(/[\s·]/g, '').toLowerCase()
+const toChoseong = (s) =>
+  [...normMenu(s)]
+    .map((ch) => {
+      const code = ch.charCodeAt(0) - 0xac00
+      return code >= 0 && code <= 11171 ? CHOSEONG[Math.floor(code / 588)] : ch
+    })
+    .join('')
+
+const matchMenu = (query, group, label) => {
+  const q = normMenu(query)
+  if (!q) return true
+  const target = `${group ?? ''}${label}`
+  return normMenu(target).includes(q) || toChoseong(target).includes(q)
+}
+
+const isPathInItem = (pathname, to) => (to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`))
+const findActiveGroup = (pathname) => MENU.find((g) => g.group && g.items.some((it) => isPathInItem(pathname, it.to)))?.group ?? null
 
 export default function App() {
   const [navOpen, setNavOpen] = useState(false)
+  const [menuQuery, setMenuQuery] = useState('')
+  const [highlightIdx, setHighlightIdx] = useState(0)
+  const searchRef = useRef(null)
+  const navigate = useNavigate()
   const location = useLocation()
+  const activeGroup = findActiveGroup(location.pathname)
+  const [openGroup, setOpenGroup] = useState(() => activeGroup)
   const { data: integ } = useApi('/integration/summary', { refreshMs: 15000 })
 
-  useEffect(() => setNavOpen(false), [location.pathname])
+  useEffect(() => {
+    setNavOpen(false)
+    setOpenGroup(activeGroup)
+  }, [location.pathname, activeGroup])
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setNavOpen(true)
+        requestAnimationFrame(() => {
+          searchRef.current?.focus()
+          searchRef.current?.select()
+        })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // 한 번에 한 모듈만 펼침. 다른 모듈을 접으면 현재 활성 화면의 모듈(없으면 전체 접힘)로 복귀
+  const toggleGroup = (group) => {
+    setOpenGroup((prev) => (prev === group ? activeGroup : group))
+  }
+
+  const isSearching = menuQuery.trim().length > 0
+  const visibleMenu = useMemo(() => {
+    if (!isSearching) return MENU
+    return MENU.map((g) => ({ ...g, items: g.items.filter((it) => matchMenu(menuQuery, g.group, it.label)) })).filter((g) => g.items.length > 0)
+  }, [isSearching, menuQuery])
+
+  const flatMatches = useMemo(() => (isSearching ? visibleMenu.flatMap((g) => g.items) : []), [isSearching, visibleMenu])
+  const safeIdx = flatMatches.length > 0 ? Math.min(highlightIdx, flatMatches.length - 1) : -1
+  const focusTo = safeIdx >= 0 ? flatMatches[safeIdx].to : null
+
+  const onSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown' && flatMatches.length > 0) {
+      e.preventDefault()
+      setHighlightIdx((i) => (i + 1) % flatMatches.length)
+    } else if (e.key === 'ArrowUp' && flatMatches.length > 0) {
+      e.preventDefault()
+      setHighlightIdx((i) => (i - 1 + flatMatches.length) % flatMatches.length)
+    } else if (e.key === 'Enter' && focusTo) {
+      e.preventDefault()
+      navigate(focusTo)
+      setMenuQuery('')
+      setHighlightIdx(0)
+      searchRef.current?.blur()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      if (menuQuery) {
+        setMenuQuery('')
+        setHighlightIdx(0)
+      } else {
+        searchRef.current?.blur()
+      }
+    }
+  }
 
   const failed = integ?.summary?.outbox?.failed ?? 0
   const erpOnline = integ?.erpOnline
@@ -87,22 +170,95 @@ export default function App() {
             <span>ERP 연동 데모</span>
           </div>
         </div>
+        <div className="nav-search">
+          <input
+            ref={searchRef}
+            type="text"
+            placeholder="메뉴 검색 (초성 가능)"
+            aria-label="메뉴 검색"
+            value={menuQuery}
+            onChange={(e) => {
+              setMenuQuery(e.target.value)
+              setHighlightIdx(0)
+            }}
+            onKeyDown={onSearchKeyDown}
+          />
+          {menuQuery ? (
+            <button
+              type="button"
+              className="nav-search-clear"
+              aria-label="검색어 지우기"
+              onClick={() => {
+                setMenuQuery('')
+                setHighlightIdx(0)
+                searchRef.current?.focus()
+              }}
+            >
+              ×
+            </button>
+          ) : (
+            <span className="nav-search-hint" aria-hidden>
+              Ctrl+K
+            </span>
+          )}
+        </div>
         <nav>
-          {MENU.map((g, i) => (
-            <div key={i} className="nav-group">
-              {g.group && <div className="nav-title">{g.group}</div>}
-              {g.items.map((it) => (
-                <NavLink key={it.to} to={it.to} end={it.to === '/'} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                  <span className="nav-icon" aria-hidden>
-                    {it.icon}
-                  </span>
-                  <span className="nav-label">{it.label}</span>
-                  {it.planned && <span className="nav-stage">준비 중</span>}
-                  {it.to === '/integration' && failed > 0 && <span className="nav-alert">{failed}</span>}
-                </NavLink>
-              ))}
-            </div>
-          ))}
+          {visibleMenu.map((g, i) => {
+            const isActiveGroup = g.group != null && g.group === activeGroup
+            const isOpen = !g.group || isSearching || openGroup === g.group
+            return (
+              <div key={g.group ?? i} className="nav-group">
+                {g.group && (
+                  <button
+                    type="button"
+                    className={`nav-title ${isActiveGroup && isOpen ? 'current' : ''}`}
+                    aria-expanded={isOpen}
+                    title={isActiveGroup && isOpen ? '현재 활성화된 화면의 모듈이에요' : isOpen ? `${g.group} 접기` : `${g.group} 펼치기`}
+                    onClick={() => !isSearching && toggleGroup(g.group)}
+                  >
+                    <span>{g.group}</span>
+                    {g.group === 'ERP 연동' && !isOpen && failed > 0 && <span className="nav-alert">{failed}</span>}
+                    {!isSearching && (
+                      <span className={`nav-caret ${isOpen ? 'open' : ''}`} aria-hidden>
+                        ▾
+                      </span>
+                    )}
+                  </button>
+                )}
+                {isOpen && (
+                  <div className="nav-items">
+                    {g.items.map((it) => (
+                      <NavLink
+                        key={it.to}
+                        to={it.to}
+                        end={it.to === '/'}
+                        onMouseEnter={() => {
+                          if (!isSearching) return
+                          const idx = flatMatches.findIndex((m) => m.to === it.to)
+                          if (idx >= 0) setHighlightIdx(idx)
+                        }}
+                        onClick={() => {
+                          if (isSearching) {
+                            setMenuQuery('')
+                            setHighlightIdx(0)
+                          }
+                        }}
+                        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${isSearching && focusTo === it.to ? 'kb-focus' : ''}`}
+                      >
+                        <span className="nav-icon" aria-hidden>
+                          {it.icon}
+                        </span>
+                        <span className="nav-label">{it.label}</span>
+                        {it.planned && <span className="nav-stage">준비 중</span>}
+                        {it.to === '/integration' && failed > 0 && <span className="nav-alert">{failed}</span>}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {isSearching && flatMatches.length === 0 && <div className="nav-empty">일치하는 메뉴가 없어요</div>}
         </nav>
         <div className="sidebar-foot">
           <a href="https://cloudheat.kr">← cloudheat.kr</a>
@@ -117,7 +273,10 @@ export default function App() {
           <button className="menu-btn" aria-label="메뉴" onClick={() => setNavOpen((v) => !v)}>
             ☰
           </button>
-          <div className="topbar-note">가상 데이터</div>
+          <div className="topbar-note">
+            {import.meta.env.DEV && <span className="badge t-info" style={{ marginRight: 8 }}>DEV</span>}
+            가상 데이터
+          </div>
           <div className="topbar-right">
             <NavLink to="/integration" className={`erp-pill ${erpOnline == null ? '' : erpOnline ? 'up' : 'down'}`}>
               <i className="dot" />

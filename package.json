@@ -1,0 +1,13 @@
+{
+  "name": "cloudheat",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev.mjs",
+    "dev:mes": "node dev.mjs mes",
+    "dev:erp": "node dev.mjs erp",
+    "dev:site": "node dev.mjs site",
+    "build": "npm --prefix mes-web run build && npm --prefix erp-web run build && npm --prefix site run build"
+  }
+}

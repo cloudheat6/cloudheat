@@ -70,6 +70,36 @@ api.MapGet("/health", async (NpgsqlDataSource db) =>
 api.MapGet("/work-orders", async (WorkOrderRepository repo) =>
     Results.Ok(await repo.ListAsync()));
 
+api.MapPost("/work-orders", async (SaveWorkOrder body, WorkOrderRepository repo) =>
+{
+    var result = await repo.CreateAsync(body);
+    return result.Error is not null
+        ? Results.BadRequest(new { message = result.Error })
+        : Results.Ok(result.Row);
+}).RequireRateLimiting("writes");
+
+api.MapPut("/work-orders/{id:int}", async (int id, SaveWorkOrder body, WorkOrderRepository repo) =>
+{
+    var result = await repo.UpdateHeaderAsync(id, body);
+    return result switch
+    {
+        { NotFound: true } => Results.NotFound(),
+        { Error: not null } => Results.BadRequest(new { message = result.Error }),
+        _ => Results.Ok(result.Row),
+    };
+}).RequireRateLimiting("writes");
+
+api.MapPost("/work-orders/{id:int}/cancel", async (int id, WorkOrderRepository repo) =>
+{
+    var result = await repo.CancelAsync(id);
+    return result switch
+    {
+        { NotFound: true } => Results.NotFound(),
+        { Error: not null } => Results.BadRequest(new { message = result.Error }),
+        _ => Results.Ok(result.Row),
+    };
+}).RequireRateLimiting("writes");
+
 api.MapGet("/work-orders/{id:int}/detail", async (int id, WorkOrderRepository repo) =>
 {
     var detail = await repo.DetailAsync(id);
@@ -149,6 +179,7 @@ master.MapDelete("/warehouses/{code}", async (string code, MasterRepository r) =
 { await r.DeleteWarehouseAsync(code); return Results.Ok(); }).RequireRateLimiting("writes");
 
 master.MapGet("/lines", async (MasterRepository r) => Results.Ok(await r.LinesAsync()));
+master.MapGet("/workers", async (MasterRepository r) => Results.Ok(await r.WorkersAsync()));
 master.MapPost("/lines", async (LineInput b, MasterRepository r) =>
 { await r.AddLineAsync(b); return Results.Ok(); }).RequireRateLimiting("writes");
 master.MapPut("/lines/{id:int}", async (short id, LineInput b, MasterRepository r) =>

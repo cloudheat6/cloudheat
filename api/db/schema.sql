@@ -444,6 +444,45 @@ JOIN routing_step rs ON rs.line_id = i.line_id
 JOIN process p       ON p.process_name = rs.step_name
 WHERE i.item_type = '제품' AND NOT EXISTS (SELECT 1 FROM routing);
 
+-- ════════════════════════════════════════════════════════
+-- 작업지시 등록 확장: 지시일 · 라인 · 연결 주문번호 · 지시 상태(확정/취소)
+-- ════════════════════════════════════════════════════════
+ALTER TABLE work_order ADD COLUMN IF NOT EXISTS wo_date   date        NOT NULL DEFAULT current_date;
+ALTER TABLE work_order ADD COLUMN IF NOT EXISTS line_id   smallint    REFERENCES line;
+ALTER TABLE work_order ADD COLUMN IF NOT EXISTS so_no     varchar(20);
+ALTER TABLE work_order ADD COLUMN IF NOT EXISTS wo_status varchar(10) NOT NULL DEFAULT '확정';
+
+CREATE OR REPLACE VIEW v_work_order AS
+SELECT w.wo_id,
+       w.wo_no,
+       w.due_date,
+       l.line_id,
+       COALESCE(l.line_name, '-')::varchar(30) AS line_name,
+       w.item_code,
+       i.item_name,
+       wk.worker_name,
+       w.plan_qty,
+       w.prod_qty,
+       w.defect_qty,
+       w.remark,
+       w.updated_at,
+       CASE
+           WHEN w.wo_status = '취소'        THEN '취소'
+           WHEN w.prod_qty >= w.plan_qty    THEN '완료'
+           WHEN w.due_date < current_date   THEN '지연'
+           WHEN w.prod_qty = 0              THEN '대기'
+           ELSE '진행'
+       END AS status,
+       w.wo_date,
+       w.worker_id,
+       w.so_no,
+       w.wo_status,
+       i.unit
+FROM work_order w
+JOIN item       i  ON i.item_code = w.item_code
+LEFT JOIN line  l  ON l.line_id   = COALESCE(w.line_id, i.line_id)
+JOIN worker     wk ON wk.worker_id = w.worker_id;
+
 -- 공정별 실적을 품목 라우팅 기준으로 (위의 라인 기준 정의를 대체)
 -- 라우팅을 바꿔 가중치가 없는 공정은 가중치 1 로 계산
 CREATE OR REPLACE FUNCTION fn_wo_process(p_wo_id integer)

@@ -88,12 +88,12 @@ if ($Bump) {
     Step "버전 올림: $Version → $New"
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     [IO.File]::WriteAllText($VersionFile, "$New`n", $utf8)
-    foreach ($pkg in 'site\package.json', 'mes-web\package.json', 'erp-web\package.json') {
+    foreach ($pkg in 'package.json', 'site\package.json', 'mes-web\package.json', 'erp-web\package.json') {
         $p = Join-Path $Root $pkg
         $s = [regex]::Replace([IO.File]::ReadAllText($p), '"version":\s*"[^"]*"', "`"version`": `"$New`"", 1)
         [IO.File]::WriteAllText($p, $s, $utf8)
     }
-    Invoke-Git add VERSION site/package.json mes-web/package.json erp-web/package.json
+    Invoke-Git add VERSION package.json site/package.json mes-web/package.json erp-web/package.json
     Invoke-Git commit -q -m "release: v$New"
     Invoke-Git tag -a "v$New" -m "v$New"
     $Version = $New

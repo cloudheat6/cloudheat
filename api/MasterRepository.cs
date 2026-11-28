@@ -75,6 +75,12 @@ public sealed class LineRow
     public int UsedBy { get; init; }
 }
 
+public sealed class WorkerRow
+{
+    public short WorkerId { get; init; }
+    public string WorkerName { get; init; } = "";
+}
+
 public sealed class RoutingStep
 {
     public short Seq { get; init; }
@@ -255,6 +261,12 @@ public sealed class MasterRepository(NpgsqlDataSource db)
     }
 
     public Task DeleteLineAsync(short id) => DeleteAsync("DELETE FROM mes.line WHERE line_id = @id", new { id });
+
+    public async Task<IEnumerable<WorkerRow>> WorkersAsync()
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        return await conn.QueryAsync<WorkerRow>("SELECT worker_id, worker_name FROM mes.worker ORDER BY worker_id");
+    }
 
     // ── 라우팅 ─────────────────────────────────────────────
     public async Task<IEnumerable<RoutingStep>> RoutingAsync(string itemCode)
