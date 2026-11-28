@@ -50,7 +50,7 @@ export function useApi(path) {
   return { data, error, reload }
 }
 
-const nf = new Intl.NumberFormat('ko-KR')
+const nf = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 6 })
 export const fmtNum = (v) => (v == null || v === '' ? '' : nf.format(v))
 
 const pad = (n) => String(n).padStart(2, '0')

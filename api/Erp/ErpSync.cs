@@ -54,8 +54,9 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
             case "공통코드":
             {
                 var groups = await erp.GetCodesAsync(since, ct);
+                var isFull = since is null;
                 return new(groups.Count, groups.Count > 0 ? groups.Max(x => x.UpdatedAt) : null,
-                    groups.Select(x => x.GroupCode).ToList(), (c, t) => ApplyCodesAsync(c, groups, t));
+                    groups.Select(x => x.GroupCode).ToList(), (c, t) => ApplyCodesAsync(c, groups, isFull, t));
             }
             case "품목":
             {
@@ -139,8 +140,8 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
         return await WriteLogAsync(conn, kind, triggerBy, started, batch.Fetched, applied, problems.Count, status, message);
     }
 
-    // 공통코드: ERP 관리내역등록의 항목 · 상세 코드를 MES 에 동기화 (삭제된 상세 코드도 반영)
-    private static async Task<(int, List<string>, string?)> ApplyCodesAsync(NpgsqlConnection conn, List<ErpCodeGroup> groups, CancellationToken ct)
+    // 공통코드: ERP 관리내역등록의 항목 · 상세 코드를 MES 에 동기화 (삭제된 상세 코드 및 전체 수신 시 삭제된 항목 반영)
+    private static async Task<(int, List<string>, string?)> ApplyCodesAsync(NpgsqlConnection conn, List<ErpCodeGroup> groups, bool isFull, CancellationToken ct)
     {
         await using var tx = await conn.BeginTransactionAsync(ct);
         var codeCount = 0;
@@ -170,6 +171,13 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
                 DELETE FROM mes.common_code
                 WHERE group_code = @GroupCode AND NOT (code = ANY(@keep))
                 """, new { g.GroupCode, keep = codes.Select(c => c.Code).ToArray() }, tx);
+        }
+        if (isFull && groups.Count > 0)
+        {
+            await conn.ExecuteAsync("""
+                DELETE FROM mes.code_group
+                WHERE NOT (group_code = ANY(@keepGroups))
+                """, new { keepGroups = groups.Select(g => g.GroupCode).ToArray() }, tx);
         }
         await tx.CommitAsync(ct);
         return (groups.Count, [], $"코드 {codeCount}건");

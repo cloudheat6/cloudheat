@@ -109,11 +109,11 @@ export default function App() {
             <Route path="/sales" element={<Navigate to="/sales/orders" replace />} />
             <Route path="/master" element={<Navigate to="/master/items" replace />} />
 
-            <Route path="/master/items" element={<Master kind="items" />} />
-            <Route path="/master/partners" element={<Master kind="partners" />} />
+            <Route path="/master/items" element={<Master key="items" kind="items" />} />
+            <Route path="/master/partners" element={<Master key="partners" kind="partners" />} />
             <Route path="/master/codes" element={<Codes />} />
-            <Route path="/purchase/orders" element={<Orders kind="purchase" />} />
-            <Route path="/sales/orders" element={<Orders kind="sales" />} />
+            <Route path="/purchase/orders" element={<Orders key="purchase" kind="purchase" />} />
+            <Route path="/sales/orders" element={<Orders key="sales" kind="sales" />} />
             {PLANNED.map((p) => (
               <Route key={p.to} path={p.to} element={<Planned title={p.label} kind={p.kind} desc={p.planned} />} />
             ))}

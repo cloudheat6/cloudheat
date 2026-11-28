@@ -55,6 +55,8 @@ public sealed class ErpUiStore(NpgsqlDataSource db, ErpStore store)
     public async Task CreateCodeGroupAsync(CodeGroupInput g)
     {
         var groupCode = RequireText(g.GroupCode, "관리항목 코드", 20).ToUpperInvariant();
+        if (groupCode.Contains('/') || groupCode == "GROUPS")
+            throw new UiException("사용할 수 없는 관리항목 코드예요");
         var groupName = RequireText(g.GroupName, "관리항목명", 50);
         var remark = TrimMax(g.Remark, "비고", 200);
 
@@ -234,7 +236,14 @@ public sealed class ErpUiStore(NpgsqlDataSource db, ErpStore store)
             dueDate = dueDate.ToString("yyyy-MM-dd"),
             remark = input.Remark?.Trim() ?? "",
         }, tx);
-        await conn.ExecuteAsync($"DELETE FROM erp.{k.Line} WHERE {k.No} = @no AND NOT (line_no = ANY(@keep))", new { no, keep }, tx);
+        try
+        {
+            await conn.ExecuteAsync($"DELETE FROM erp.{k.Line} WHERE {k.No} = @no AND NOT (line_no = ANY(@keep))", new { no, keep }, tx);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+        {
+            throw new UiException($"이미 입고 · 출고 전표에 연결된 {k.Label} 행은 삭제할 수 없어요", 409);
+        }
 
         var next = (short)(existing.Count == 0 ? 0 : existing.Max());
         foreach (var l in input.Lines)
@@ -317,7 +326,10 @@ public sealed class ErpUiStore(NpgsqlDataSource db, ErpStore store)
             """, new { currency, editingNo }, tx);
         if (!validCur) throw new UiException($"관리내역에 등록된 통화를 고르세요: {currency}");
 
-        if (input.ExchangeRate <= 0 || input.ExchangeRate > 1_000_000) throw new UiException("환율은 0보다 크고 1,000,000 이하로 입력하세요");
+        if (input.ExchangeRate < 0.000001m || input.ExchangeRate > 1_000_000m)
+            throw new UiException("환율은 0.000001 ~ 1,000,000 범위로 입력하세요");
+        if (decimal.Round(input.ExchangeRate, 6) != input.ExchangeRate)
+            throw new UiException("환율은 소수점 6자리까지 입력할 수 있어요");
 
         if (!DateOnly.TryParse(input.OrderDate, out var orderDate)) throw new UiException($"{k.Label}일을 확인하세요");
         if (!DateOnly.TryParse(input.DueDate, out var dueDate)) throw new UiException("납기일을 확인하세요");
@@ -337,6 +349,7 @@ public sealed class ErpUiStore(NpgsqlDataSource db, ErpStore store)
         {
             if (l.Qty <= 0 || l.Qty > 1_000_000) throw new UiException($"{i}행: 수량은 1 ~ 1,000,000 이에요");
             if (l.UnitPrice < 0 || l.UnitPrice > 100_000_000) throw new UiException($"{i}행: 단가를 확인하세요");
+            if (decimal.Round(l.UnitPrice, 2) != l.UnitPrice) throw new UiException($"{i}행: 단가는 소수점 2자리까지 입력할 수 있어요");
             var (s, v, tot) = ResolveAmounts(orderType, l);
             if (s < 0 || v < 0 || tot < 0 || s > 100_000_000_000L || v > 100_000_000_000L)
                 throw new UiException($"{i}행: 금액을 확인하세요");

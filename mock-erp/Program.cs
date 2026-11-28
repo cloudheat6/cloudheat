@@ -99,6 +99,12 @@ ui.AddEndpointFilter(async (ctx, next) =>
 {
     try { return await next(ctx); }
     catch (UiException ex) { return Results.Json(new { message = ex.Message }, statusCode: ex.Status); }
+    catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+    { return Results.Json(new { message = "다른 전표나 데이터에서 사용 중이라 삭제하거나 바꿀 수 없어요" }, statusCode: 409); }
+    catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+    { return Results.Json(new { message = "이미 등록된 코드예요" }, statusCode: 409); }
+    catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.CheckViolation)
+    { return Results.Json(new { message = $"입력값 범위를 확인하세요 ({ex.ConstraintName})" }, statusCode: 400); }
 });
 ui.MapGet("/health", () => Results.Ok(new { status = "ok", version = AppInfo.Version }));
 ui.MapGet("/codes", async (ErpUiStore s) => Results.Ok(await s.CodesAsync()));
@@ -108,9 +114,9 @@ ui.MapPut("/codes/groups/{groupCode}", async (string groupCode, CodeGroupInput b
 { await s.UpdateCodeGroupAsync(groupCode, body); return Results.Ok(); }).RequireRateLimiting("writes");
 ui.MapPost("/codes/{groupCode}", async (string groupCode, CommonCodeInput body, ErpUiStore s) =>
 { await s.CreateCodeAsync(groupCode, body); return Results.Ok(); }).RequireRateLimiting("writes");
-ui.MapPut("/codes/{groupCode}/{code}", async (string groupCode, string code, CommonCodeInput body, ErpUiStore s) =>
+ui.MapPut("/codes/{groupCode}/{*code}", async (string groupCode, string code, CommonCodeInput body, ErpUiStore s) =>
 { await s.UpdateCodeAsync(groupCode, code, body); return Results.Ok(); }).RequireRateLimiting("writes");
-ui.MapDelete("/codes/{groupCode}/{code}", async (string groupCode, string code, ErpUiStore s) =>
+ui.MapDelete("/codes/{groupCode}/{*code}", async (string groupCode, string code, ErpUiStore s) =>
 { await s.DeleteCodeAsync(groupCode, code); return Results.Ok(); }).RequireRateLimiting("writes");
 ui.MapGet("/items", async (ErpUiStore s) => Results.Ok(await s.ItemsAsync()));
 ui.MapGet("/partners", async (ErpUiStore s) => Results.Ok(await s.PartnersAsync()));

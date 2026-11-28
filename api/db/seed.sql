@@ -65,7 +65,9 @@ ON CONFLICT (defect_type_id) DO UPDATE SET line_id = EXCLUDED.line_id, defect_na
 
 -- ── 거래 데이터 비우기 ─────────────────────────────────
 -- 작업지시(+ 공정 · 불량 가중치), 재고 · 수불, 발주 · 주문 사본, ERP 송수신 이력
--- 수신 기준 시각도 비워서 ERP 의 품목 · 거래처 · 발주 · 주문을 처음부터 다시 받게 함
+-- 수신 기준 시각도 비워서 ERP 의 공통코드 · 품목 · 거래처 · 발주 · 주문을 처음부터 다시 받게 함
+DELETE FROM code_group
+WHERE group_code NOT IN ('PO_TYPE', 'SO_TYPE', 'CURRENCY', 'ITEM_TYPE', 'PARTNER_TYPE', 'UNIT', 'WH_TYPE');
 TRUNCATE work_order, stock, stock_tx, erp_outbox, erp_sync_log, erp_sync_cursor, purchase_order, sales_order
     RESTART IDENTITY CASCADE;
 ALTER SEQUENCE doc_seq RESTART;

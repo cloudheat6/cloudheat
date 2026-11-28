@@ -49,10 +49,17 @@ const emptyLine = (itemCode = '') => ({
   supplyAmt: '0',
   vatAmt: '0',
   totalAmt: '0',
+  derivePriceFromAmt: false,
 })
 
 const roundPrice = (n) => String(Math.round(Math.max(0, n) * 100) / 100)
 const isZeroRated = (orderType) => String(orderType) === '1'
+const hasMaxDecimals = (raw, max) => {
+  const s = String(raw).trim()
+  if (!/^\d+(\.\d+)?$/.test(s)) return false
+  const dot = s.indexOf('.')
+  return dot === -1 || s.length - dot - 1 <= max
+}
 
 // 영세('1')는 부가세 0, 그 외 국내 과세('0' 등)는 부가세 = 공급가의 10% 소수점 버림, 합계액 = 공급가 + 부가세
 const calcFromPrice = (orderType, qty, unitPrice) => {
@@ -153,6 +160,7 @@ export default function Orders({ kind }) {
           supplyAmt: String(l.supplyAmt ?? fallback.supplyAmt),
           vatAmt: String(l.vatAmt ?? fallback.vatAmt),
           totalAmt: String(l.totalAmt ?? fallback.totalAmt),
+          derivePriceFromAmt: false,
         }
       }),
     })
@@ -180,19 +188,30 @@ export default function Orders({ kind }) {
       exchangeRate: currency === 'KRW' ? '1' : f.exchangeRate,
     }))
 
-  // 1) 수량 변경 → 단가가 있으면 공급가 · 부가세 · 합계액 계산, 단가 없이 공급가만 먼저 넣었으면 단가 역산
+  // 1) 수량 변경 → 수량 미입력 상태에서 공급가/합계액을 먼저 넣었으면 단가를 역산하고, 아니면 단가 기준으로 금액 계산
   const changeQty = (i, rawQty) =>
     setForm((f) => ({
       ...f,
       lines: f.lines.map((l, k) => {
         if (k !== i) return l
         const q = Number(rawQty) || 0
-        if (l.unitPrice === '' && Number(l.supplyAmt) > 0 && q > 0) {
-          return { ...l, qty: rawQty, unitPrice: roundPrice(Number(l.supplyAmt) / q) }
+        if (l.derivePriceFromAmt) {
+          const s = Math.max(0, Math.trunc(Number(l.supplyAmt) || 0))
+          return { ...l, qty: rawQty, unitPrice: q > 0 ? roundPrice(s / q) : '' }
         }
         const c = calcFromPrice(f.orderType, rawQty, l.unitPrice)
         return { ...l, qty: rawQty, supplyAmt: String(c.supplyAmt), vatAmt: String(c.vatAmt), totalAmt: String(c.totalAmt) }
       }),
+    }))
+
+  const finishQtyEdit = (i) =>
+    setForm((f) => ({
+      ...f,
+      lines: f.lines.map((l, k) =>
+        k === i && l.derivePriceFromAmt && Number(l.qty) > 0 && l.unitPrice !== ''
+          ? { ...l, derivePriceFromAmt: false }
+          : l,
+      ),
     }))
 
   // 2) 단가 변경 → 공급가 · 부가세 · 합계액 계산
@@ -202,7 +221,14 @@ export default function Orders({ kind }) {
       lines: f.lines.map((l, k) => {
         if (k !== i) return l
         const c = rawPrice === '' ? { supplyAmt: 0, vatAmt: 0, totalAmt: 0 } : calcFromPrice(f.orderType, l.qty, rawPrice)
-        return { ...l, unitPrice: rawPrice, supplyAmt: String(c.supplyAmt), vatAmt: String(c.vatAmt), totalAmt: String(c.totalAmt) }
+        return {
+          ...l,
+          unitPrice: rawPrice,
+          supplyAmt: String(c.supplyAmt),
+          vatAmt: String(c.vatAmt),
+          totalAmt: String(c.totalAmt),
+          derivePriceFromAmt: false,
+        }
       }),
     }))
 
@@ -212,16 +238,20 @@ export default function Orders({ kind }) {
       ...f,
       lines: f.lines.map((l, k) => {
         if (k !== i) return l
-        if (rawSupply === '') return { ...l, supplyAmt: '', unitPrice: '0', vatAmt: '0', totalAmt: '0' }
-        const s = Math.max(0, Math.trunc(Number(rawSupply) || 0))
         const q = Number(l.qty) || 0
+        const noQty = !(q > 0)
+        if (rawSupply === '') {
+          return { ...l, supplyAmt: '', unitPrice: noQty ? '' : '0', vatAmt: '0', totalAmt: '0', derivePriceFromAmt: noQty }
+        }
+        const s = Math.max(0, Math.trunc(Number(rawSupply) || 0))
         const v = isZeroRated(f.orderType) ? 0 : Math.trunc(s / 10)
         return {
           ...l,
           supplyAmt: rawSupply,
-          unitPrice: q > 0 ? roundPrice(s / q) : l.unitPrice,
+          unitPrice: q > 0 ? roundPrice(s / q) : '',
           vatAmt: String(v),
           totalAmt: String(s + v),
+          derivePriceFromAmt: noQty,
         }
       }),
     }))
@@ -244,17 +274,21 @@ export default function Orders({ kind }) {
       ...f,
       lines: f.lines.map((l, k) => {
         if (k !== i) return l
-        if (rawTotal === '') return { ...l, totalAmt: '', unitPrice: '0', supplyAmt: '0', vatAmt: '0' }
+        const q = Number(l.qty) || 0
+        const noQty = !(q > 0)
+        if (rawTotal === '') {
+          return { ...l, totalAmt: '', unitPrice: noQty ? '' : '0', supplyAmt: '0', vatAmt: '0', derivePriceFromAmt: noQty }
+        }
         const tot = Math.max(0, Math.trunc(Number(rawTotal) || 0))
         const s = isZeroRated(f.orderType) ? tot : Math.trunc((tot * 10 + 9) / 11)
         const v = tot - s
-        const q = Number(l.qty) || 0
         return {
           ...l,
           totalAmt: rawTotal,
           supplyAmt: String(s),
           vatAmt: String(v),
-          unitPrice: q > 0 ? roundPrice(s / q) : l.unitPrice,
+          unitPrice: q > 0 ? roundPrice(s / q) : '',
+          derivePriceFromAmt: noQty,
         }
       }),
     }))
@@ -273,13 +307,21 @@ export default function Orders({ kind }) {
   }, [form])
 
   const save = async () => {
-    if (!form.currency || !(Number(form.exchangeRate) > 0)) return notify('통화 · 환율을 확인하세요')
-    const bad = form.lines.findIndex(
+    const rate = Number(form.exchangeRate)
+    if (!form.currency || !Number.isFinite(rate) || rate < 0.000001 || rate > 1_000_000 || !hasMaxDecimals(form.exchangeRate, 6)) {
+      return notify('환율은 0.000001 ~ 1,000,000 범위(소수점 6자리까지)로 입력하세요')
+    }
+    const badQty = form.lines.findIndex((l) => {
+      const q = Number(l.qty)
+      return !l.itemCode || l.qty === '' || !Number.isInteger(q) || q < 1 || q > 1_000_000 || !hasMaxDecimals(l.qty, 0)
+    })
+    if (badQty >= 0) return notify(`${badQty + 1}행: 품목과 수량(1 ~ 1,000,000 정수)을 확인하세요`)
+    const badPrice = form.lines.findIndex(
+      (l) => l.unitPrice === '' || Number(l.unitPrice) < 0 || Number(l.unitPrice) > 100_000_000 || !hasMaxDecimals(l.unitPrice, 2),
+    )
+    if (badPrice >= 0) return notify(`${badPrice + 1}행: 단가는 0 이상 소수점 2자리까지 입력하세요`)
+    const badAmt = form.lines.findIndex(
       (l) =>
-        !l.itemCode ||
-        !(Number(l.qty) > 0) ||
-        l.unitPrice === '' ||
-        Number(l.unitPrice) < 0 ||
         l.supplyAmt === '' ||
         Number(l.supplyAmt) < 0 ||
         l.vatAmt === '' ||
@@ -287,11 +329,11 @@ export default function Orders({ kind }) {
         l.totalAmt === '' ||
         Number(l.totalAmt) < 0,
     )
-    if (bad >= 0) return notify(`${bad + 1}행: 품목 · 수량 · 단가 · 금액을 확인하세요`)
+    if (badAmt >= 0) return notify(`${badAmt + 1}행: 공급가 · 부가세 · 합계액을 확인하세요`)
     const body = {
       orderType: String(form.orderType),
       currency: form.currency,
-      exchangeRate: Number(form.exchangeRate),
+      exchangeRate: rate,
       partnerCode: form.partnerCode,
       orderDate: form.orderDate,
       dueDate: form.dueDate,
@@ -299,7 +341,7 @@ export default function Orders({ kind }) {
       lines: form.lines.map((l) => ({
         lineNo: l.lineNo,
         itemCode: l.itemCode,
-        qty: Math.round(Number(l.qty)),
+        qty: Number(l.qty),
         unitPrice: Number(l.unitPrice),
         supplyAmt: Math.trunc(Number(l.supplyAmt)),
         vatAmt: Math.trunc(Number(l.vatAmt)),
@@ -336,7 +378,7 @@ export default function Orders({ kind }) {
     }
   }
 
-  const error = orders.error || items.error || partners.error
+  const error = orders.error || items.error || partners.error || codeGroups.error
 
   // 수정 중인 문서가 비활성화된 이전 코드 값을 갖고 있어도 선택창에서 보이게 포함
   const typeOptions = form && !activeTypeCodes.some((c) => String(c.code) === String(form.orderType))
@@ -502,7 +544,7 @@ export default function Orders({ kind }) {
                 </label>
                 <label>
                   <span>환율</span>
-                  <input className="num" type="number" min="0.0001" step="any" value={form.exchangeRate} onChange={(e) => set({ exchangeRate: e.target.value })} />
+                  <input className="num" type="number" min="0.000001" max="1000000" step="0.000001" value={form.exchangeRate} onChange={(e) => set({ exchangeRate: e.target.value })} />
                 </label>
                 <label>
                   <span>납기일</span>
@@ -555,10 +597,19 @@ export default function Orders({ kind }) {
                         </td>
                         <td className="muted">{byItem[l.itemCode]?.unit}</td>
                         <td>
-                          <input className="num" type="number" min="1" step="1" value={l.qty} onChange={(e) => changeQty(i, e.target.value)} aria-label={`${i + 1}행 수량`} />
+                          <input
+                            className="num"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={l.qty}
+                            onChange={(e) => changeQty(i, e.target.value)}
+                            onBlur={() => finishQtyEdit(i)}
+                            aria-label={`${i + 1}행 수량`}
+                          />
                         </td>
                         <td>
-                          <input className="num" type="number" min="0" step="any" value={l.unitPrice} onChange={(e) => changeUnitPrice(i, e.target.value)} aria-label={`${i + 1}행 단가`} />
+                          <input className="num" type="number" min="0" step="0.01" value={l.unitPrice} onChange={(e) => changeUnitPrice(i, e.target.value)} aria-label={`${i + 1}행 단가`} />
                         </td>
                         <td>
                           <input className="num" type="number" min="0" step="1" value={l.supplyAmt} onChange={(e) => changeSupplyAmt(i, e.target.value)} aria-label={`${i + 1}행 공급가`} />

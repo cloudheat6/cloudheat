@@ -101,10 +101,12 @@ ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS remark varchar(200) NOT NULL
 -- 발주 · 주문 구분 (관리내역 PO_TYPE / SO_TYPE 코드), 통화 · 환율, 공급가 · 부가세 · 합계액
 ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS order_type    varchar(20)   NOT NULL DEFAULT '0';
 ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS currency      varchar(10)   NOT NULL DEFAULT 'KRW';
-ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS exchange_rate numeric(12,4) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0);
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS exchange_rate numeric(14,6) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0);
 ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS order_type    varchar(20)   NOT NULL DEFAULT '0';
 ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS currency      varchar(10)   NOT NULL DEFAULT 'KRW';
-ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS exchange_rate numeric(12,4) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0);
+ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS exchange_rate numeric(14,6) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0);
+ALTER TABLE purchase_order ALTER COLUMN exchange_rate TYPE numeric(14,6);
+ALTER TABLE sales_order    ALTER COLUMN exchange_rate TYPE numeric(14,6);
 
 -- 예전 smallint order_type 컬럼이 있던 DB 를 varchar(20) 코드형으로 변환
 ALTER TABLE purchase_order DROP CONSTRAINT IF EXISTS purchase_order_order_type_check;

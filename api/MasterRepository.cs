@@ -217,7 +217,7 @@ public sealed class MasterRepository(NpgsqlDataSource db)
     {
         var name = Required(w.WhName, "창고명", 30);
         await using var conn = await db.OpenConnectionAsync();
-        var type = await WhTypeAsync(conn, w.WhType);
+        var type = await WhTypeAsync(conn, w.WhType, code);
         await Found(conn.ExecuteAsync(
             "UPDATE mes.warehouse SET wh_name = @name, wh_type = @type, use_yn = @UseYn WHERE wh_code = @code",
             new { code, name, type, w.UseYn }));
@@ -354,14 +354,19 @@ public sealed class MasterRepository(NpgsqlDataSource db)
         return s;
     }
 
-    // 공통코드 WH_TYPE 에 등록된 창고 구분을 우선 허용 (비어 있으면 기본 목록 사용)
-    private static async Task<string> WhTypeAsync(NpgsqlConnection conn, string? t)
+    // 공통코드 WH_TYPE 에 등록된 창고 구분을 우선 허용 (수정 중일 때는 기존 창고가 가진 구분도 유지 허용)
+    private static async Task<string> WhTypeAsync(NpgsqlConnection conn, string? t, string? editingCode = null)
     {
         var s = t?.Trim() ?? "";
         var allowed = (await conn.QueryAsync<string>(
             "SELECT code FROM mes.common_code WHERE group_code = 'WH_TYPE' AND use_yn ORDER BY sort_no, code")).ToArray();
         var list = allowed.Length > 0 ? allowed : WarehouseTypes;
-        return list.Contains(s) ? s : throw new MasterException($"창고 구분은 {string.Join(" · ", list)} 중 하나예요");
+        if (list.Contains(s)) return s;
+        if (editingCode is not null && await conn.ExecuteScalarAsync<bool>(
+            "SELECT EXISTS (SELECT 1 FROM mes.warehouse WHERE wh_code = @editingCode AND wh_type = @s)",
+            new { editingCode, s }))
+            return s;
+        throw new MasterException($"창고 구분은 {string.Join(" · ", list)} 중 하나예요");
     }
 
     private static async Task Found(Task<int> update)

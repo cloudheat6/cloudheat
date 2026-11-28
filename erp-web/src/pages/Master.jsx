@@ -61,10 +61,10 @@ export default function Master({ kind }) {
         </span>
       </div>
 
-      {error && (
+      {(error || codeGroups.error) && (
         <div className="error-box">
-          불러오지 못했어요: {error}{' '}
-          <button className="btn ghost sm" onClick={reload}>
+          불러오지 못했어요: {error || codeGroups.error}{' '}
+          <button className="btn ghost sm" onClick={() => (reload(), codeGroups.reload())}>
             다시 시도
           </button>
         </div>

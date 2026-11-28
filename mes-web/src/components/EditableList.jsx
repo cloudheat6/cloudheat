@@ -93,11 +93,15 @@ export default function EditableList({ path, idField, columns, toBody, fields, l
               required
             >
               <option value="">{f.label}</option>
-              {f.options.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
+              {f.options.map((o) => {
+                const val = typeof o === 'object' ? o.value : o
+                const text = typeof o === 'object' ? o.label : o
+                return (
+                  <option key={val} value={val}>
+                    {text}
+                  </option>
+                )
+              })}
             </select>
           ) : (
             <input

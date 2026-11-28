@@ -4,7 +4,7 @@ import { useCodes } from '../../lib/codes.js'
 import { DataGrid } from '../../lib/grid.jsx'
 import { fmtDateTime, fmtNum } from '../../lib/format.js'
 import { useToast } from '../../lib/toast.jsx'
-import { BadgeCell, Chips, ErrorBox, Kpi, PageHeader, useToggleSet } from '../../components/ui.jsx'
+import { Badge, Chips, ErrorBox, Kpi, PageHeader, useToggleSet } from '../../components/ui.jsx'
 
 const DEFAULT_TYPES = ['제품', '원자재']
 
@@ -14,13 +14,14 @@ export default function Items() {
   const { data, error, reload } = useApi('/master/items')
   const { data: whs } = useApi('/master/warehouses')
   const { data: lines } = useApi('/master/lines')
-  const { codesOf, reload: reloadCodes } = useCodes()
+  const { codesOf, mapOf, reload: reloadCodes } = useCodes()
   const [quick, setQuick] = useState('')
   const [types, setTypes] = useState(() => new Set())
   const [busy, setBusy] = useState(false)
 
+  const itemTypeMap = mapOf('ITEM_TYPE')
   const itemTypeOptions = useMemo(() => {
-    const list = codesOf('ITEM_TYPE').map((c) => c.code)
+    const list = codesOf('ITEM_TYPE').map((c) => c.codeName)
     return list.length ? list : DEFAULT_TYPES
   }, [codesOf])
 
@@ -30,16 +31,26 @@ export default function Items() {
   const rows = useMemo(
     () =>
       (data ?? [])
-        .filter((r) => !types.size || types.has(r.itemType))
-        .map((r) => ({ ...r, wh: r.defaultWhCode ?? '', line: r.lineId == null ? '' : String(r.lineId) })),
-    [data, types],
+        .map((r) => ({
+          ...r,
+          itemTypeName: itemTypeMap[r.itemType] ?? r.itemType,
+          wh: r.defaultWhCode ?? '',
+          line: r.lineId == null ? '' : String(r.lineId),
+        }))
+        .filter((r) => !types.size || types.has(r.itemTypeName)),
+    [data, itemTypeMap, types],
   )
 
   const erpHeader = (name) => ({ headerName: name, headerClass: 'erp-col', headerTooltip: 'ERP 값 (MES에서 수정 불가)' })
 
   const columnDefs = useMemo(
     () => [
-      { field: 'itemType', ...erpHeader('구분'), width: 95, cellRenderer: BadgeCell },
+      {
+        field: 'itemTypeName',
+        ...erpHeader('구분'),
+        width: 95,
+        cellRenderer: (p) => (p.value ? <Badge tone={p.data.itemType === '제품' ? 'info' : 'muted'}>{p.value}</Badge> : null),
+      },
       { field: 'itemCode', ...erpHeader('품목코드'), width: 125, pinned: 'left', cellClass: 'mono strong' },
       { field: 'itemName', ...erpHeader('품목명'), flex: 1, minWidth: 180 },
       { field: 'unit', ...erpHeader('단위'), width: 75 },

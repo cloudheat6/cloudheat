@@ -9,12 +9,19 @@ const useCol = { field: 'useYn', headerName: '사용', width: 80, editable: true
 
 export default function ProcessWarehouse() {
   const [tab, setTab] = useState('process')
-  const { codesOf } = useCodes()
+  const { codesOf, mapOf } = useCodes()
 
-  const whTypes = useMemo(() => {
-    const list = codesOf('WH_TYPE').map((c) => c.code)
-    return list.length ? list : DEFAULT_WH_TYPES
+  const whTypeOptions = useMemo(() => {
+    const list = codesOf('WH_TYPE').map((c) => ({ value: c.code, label: c.codeName }))
+    return list.length ? list : DEFAULT_WH_TYPES.map((x) => ({ value: x, label: x }))
   }, [codesOf])
+
+  const whTypeValues = useMemo(() => whTypeOptions.map((o) => o.value), [whTypeOptions])
+
+  const whTypeRef = useMemo(() => {
+    const base = Object.fromEntries(DEFAULT_WH_TYPES.map((x) => [x, x]))
+    return { ...base, ...mapOf('WH_TYPE') }
+  }, [mapOf])
 
   const tabs = useMemo(
     () => ({
@@ -48,8 +55,11 @@ export default function ProcessWarehouse() {
             headerName: '구분',
             width: 110,
             editable: true,
+            refData: whTypeRef,
             cellEditor: 'agSelectCellEditor',
-            cellEditorParams: { values: whTypes },
+            cellEditorParams: (p) => ({
+              values: p.value && !whTypeValues.includes(p.value) ? [...whTypeValues, p.value] : whTypeValues,
+            }),
           },
           useCol,
           { field: 'stockItems', headerName: '재고 품목', width: 110, type: 'rightAligned', valueFormatter: (p) => `${p.value}개` },
@@ -58,7 +68,7 @@ export default function ProcessWarehouse() {
         fields: [
           { name: 'whCode', label: '창고 코드', width: 110, maxLength: 10 },
           { name: 'whName', label: '창고명', width: 180, maxLength: 30 },
-          { name: 'whType', label: '구분', type: 'select', options: whTypes, width: 110 },
+          { name: 'whType', label: '구분', type: 'select', options: whTypeOptions, width: 110 },
         ],
       },
       line: {
@@ -78,7 +88,7 @@ export default function ProcessWarehouse() {
         ],
       },
     }),
-    [whTypes],
+    [whTypeOptions, whTypeValues, whTypeRef],
   )
 
   const t = tabs[tab]

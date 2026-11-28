@@ -132,8 +132,8 @@ export default function App() {
         <main className="content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/purchase/orders" element={<Orders kind="발주" />} />
-            <Route path="/sales/orders" element={<Orders kind="주문" />} />
+            <Route path="/purchase/orders" element={<Orders key="발주" kind="발주" />} />
+            <Route path="/sales/orders" element={<Orders key="주문" kind="주문" />} />
             <Route path="/production/work-orders" element={<WorkOrders />} />
             <Route path="/inventory/opening" element={<Opening />} />
             <Route path="/inventory/stock" element={<Stock />} />
