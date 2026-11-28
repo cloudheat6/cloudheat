@@ -91,7 +91,7 @@ nav { flex: 1; padding: 4px 10px 12px; }
 }
 .mes-go:hover { border-color: var(--accent); color: var(--accent); }
 
-.content { padding: 24px; max-width: 1480px; width: 100%; }
+.content { padding: 24px; max-width: 1680px; width: 100%; }
 .scrim { display: none; }
 
 /* ── 페이지 ─────────────────────────── */
@@ -103,8 +103,11 @@ nav { flex: 1; padding: 4px 10px 12px; }
 .panel-bar { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }
 .panel-title { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 12px 14px; font-size: 15px; border-bottom: 1px solid var(--border); }
 .split { display: grid; gap: 14px; align-items: start; }
-.split.with-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
+.split.with-form { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.3fr); }
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.code-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 14px; align-items: start; }
+.code-add-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 14px; }
+.code-inline-form { flex-wrap: wrap; }
 
 .planned { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 32px; border: 1px dashed var(--border); border-radius: 10px; background: var(--surface); }
 .planned-badges { display: flex; align-items: center; gap: 8px; }
@@ -123,9 +126,10 @@ nav { flex: 1; padding: 4px 10px 12px; }
 .tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .tbl .empty { padding: 28px 10px; text-align: center; color: var(--muted); white-space: normal; }
 .tbl tfoot td { border-bottom: 0; }
-.tbl.lines td { padding: 4px 6px; }
+.tbl.lines td { padding: 4px 5px; }
 .tbl.lines select, .tbl.lines input { width: 100%; }
-.tbl.lines select { min-width: 190px; }
+.tbl.lines select { min-width: 170px; }
+.tbl.lines input.num { min-width: 74px; padding: 0 6px; font-variant-numeric: tabular-nums; }
 
 .tag { display: inline-block; padding: 0 8px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px; line-height: 20px; }
 .tag.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
@@ -142,7 +146,7 @@ fieldset:disabled input, fieldset:disabled select { background: var(--th); }
 
 .form-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 14px; border-bottom: 1px solid var(--border); }
 .form-head h2 { margin: 0 0 2px; font-size: 16px; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
-.fields { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; padding: 14px; }
+.fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 14px; }
 .fields label { display: flex; flex-direction: column; gap: 4px; }
 .fields label > span { font-size: 12.5px; color: var(--muted); }
 .fields .wide { grid-column: 1 / -1; }
@@ -170,8 +174,8 @@ fieldset:disabled input, fieldset:disabled select { background: var(--th); }
 .toast.ok { background: #1f5f3c; }
 
 /* ── 반응형 ─────────────────────────── */
-@media (max-width: 1180px) {
-  .split.with-form, .cols { grid-template-columns: 1fr; }
+@media (max-width: 1360px) {
+  .split.with-form, .cols, .code-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }
@@ -187,5 +191,4 @@ fieldset:disabled input, fieldset:disabled select { background: var(--th); }
   .content { padding: 16px; }
   .page-head { flex-direction: column; }
   .fields { grid-template-columns: 1fr 1fr; }
-  .fields label:first-child { grid-column: 1 / -1; }
 }

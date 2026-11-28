@@ -12,6 +12,7 @@ import Integration from './pages/Integration.jsx'
 import Planned from './pages/Planned.jsx'
 import Items from './pages/master/Items.jsx'
 import Partners from './pages/master/Partners.jsx'
+import Codes from './pages/master/Codes.jsx'
 import ProcessWarehouse from './pages/master/ProcessWarehouse.jsx'
 import Routings from './pages/master/Routings.jsx'
 import Bom from './pages/master/Bom.jsx'
@@ -22,6 +23,7 @@ export const MENU = [
   {
     group: '기준정보',
     items: [
+      { to: '/master/codes', label: '공통코드관리', icon: '⊞' },
       { to: '/master/items', label: '품목관리', icon: '▦' },
       { to: '/master/partners', label: '거래처관리', icon: '☷' },
       { to: '/master/processes', label: '공정 · 창고관리', icon: '⌂' },
@@ -137,6 +139,7 @@ export default function App() {
             <Route path="/inventory/stock" element={<Stock />} />
             <Route path="/inventory/transactions" element={<StockTx />} />
             <Route path="/integration" element={<Integration />} />
+            <Route path="/master/codes" element={<Codes />} />
             <Route path="/master/items" element={<Items />} />
             <Route path="/master/partners" element={<Partners />} />
             <Route path="/master/processes" element={<ProcessWarehouse />} />

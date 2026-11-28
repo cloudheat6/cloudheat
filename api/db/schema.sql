@@ -311,9 +311,76 @@ ALTER TABLE item ADD COLUMN IF NOT EXISTS use_yn          boolean     NOT NULL D
 ALTER TABLE item ADD COLUMN IF NOT EXISTS erp_synced_at   timestamptz;
 ALTER TABLE item ADD COLUMN IF NOT EXISTS updated_at      timestamptz NOT NULL DEFAULT now();
 
-ALTER TABLE warehouse ADD COLUMN IF NOT EXISTS wh_type varchar(10) NOT NULL DEFAULT '일반';
+ALTER TABLE warehouse ADD COLUMN IF NOT EXISTS wh_type varchar(20) NOT NULL DEFAULT '일반';
 ALTER TABLE warehouse ADD COLUMN IF NOT EXISTS use_yn  boolean     NOT NULL DEFAULT true;
 ALTER TABLE line      ADD COLUMN IF NOT EXISTS use_yn  boolean     NOT NULL DEFAULT true;
+ALTER TABLE item      ALTER COLUMN item_type TYPE varchar(20);
+ALTER TABLE warehouse ALTER COLUMN wh_type   TYPE varchar(20);
+
+-- 공통코드 (ERP 관리내역등록에서 수신)
+CREATE TABLE IF NOT EXISTS code_group (
+    group_code     varchar(20)  PRIMARY KEY,
+    group_name     varchar(50)  NOT NULL,
+    remark         varchar(200) NOT NULL DEFAULT '',
+    use_yn         boolean      NOT NULL DEFAULT true,
+    sort_no        smallint     NOT NULL DEFAULT 0,
+    erp_synced_at  timestamptz  NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS common_code (
+    group_code     varchar(20)  NOT NULL REFERENCES code_group ON DELETE CASCADE,
+    code           varchar(20)  NOT NULL,
+    code_name      varchar(50)  NOT NULL,
+    sort_no        smallint     NOT NULL DEFAULT 0,
+    use_yn         boolean      NOT NULL DEFAULT true,
+    remark         varchar(200) NOT NULL DEFAULT '',
+    erp_synced_at  timestamptz  NOT NULL DEFAULT now(),
+    PRIMARY KEY (group_code, code)
+);
+
+-- 처음 한 번: ERP 동기화 전에도 MES 화면이 바로 쓸 수 있게 기본 공통코드 채움
+INSERT INTO code_group (group_code, group_name, remark, sort_no)
+SELECT * FROM (VALUES
+    ('PO_TYPE'::varchar,      '발주구분'::varchar,   '발주 과세 · 영세 구분'::varchar, 1::smallint),
+    ('SO_TYPE',               '주문구분',            '주문 과세 · 영세 구분',          2::smallint),
+    ('CURRENCY',              '통화',                '거래 통화 코드',                 3::smallint),
+    ('ITEM_TYPE',             '품목구분',            '품목 자산 분류',                 4::smallint),
+    ('PARTNER_TYPE',          '거래처구분',          '매입 · 매출 거래처 구분',        5::smallint),
+    ('UNIT',                  '단위',                '재고 · 거래 계량 단위',          6::smallint),
+    ('WH_TYPE',               '창고구분',            '창고 용도 구분',                 7::smallint)
+) AS v(group_code, group_name, remark, sort_no)
+WHERE NOT EXISTS (SELECT 1 FROM code_group);
+
+INSERT INTO common_code (group_code, code, code_name, sort_no, remark)
+SELECT * FROM (VALUES
+    ('PO_TYPE'::varchar,      '0'::varchar,      '국내발주'::varchar, 1::smallint, '부가세 10% (소수점 버림)'::varchar),
+    ('PO_TYPE',               '1',               '수입영세',          2::smallint, '부가세 0%'),
+    ('SO_TYPE',               '0',               '국내주문',          1::smallint, '부가세 10% (소수점 버림)'),
+    ('SO_TYPE',               '1',               '수출영세',          2::smallint, '부가세 0%'),
+    ('CURRENCY',              'KRW',             '원화',              1::smallint, '기본 통화 (환율 1)'),
+    ('CURRENCY',              'USD',             '미국 달러',         2::smallint, ''),
+    ('CURRENCY',              'EUR',             '유로',              3::smallint, ''),
+    ('CURRENCY',              'JPY',             '일본 엔',           4::smallint, ''),
+    ('CURRENCY',              'CNY',             '중국 위안',         5::smallint, ''),
+    ('ITEM_TYPE',             '제품',            '제품',              1::smallint, '완제품'),
+    ('ITEM_TYPE',             '원자재',          '원자재',            2::smallint, '원부자재'),
+    ('PARTNER_TYPE',          '매입처',          '매입처',            1::smallint, '자재 구매처'),
+    ('PARTNER_TYPE',          '매출처',          '매출처',            2::smallint, '제품 고객사'),
+    ('UNIT',                  'EA',              'EA',                1::smallint, '개'),
+    ('UNIT',                  'KG',              'KG',                2::smallint, '킬로그램'),
+    ('UNIT',                  'L',               'L',                 3::smallint, '리터'),
+    ('WH_TYPE',               '원자재',          '원자재',            1::smallint, '원자재 보관 창고'),
+    ('WH_TYPE',               '현장',            '현장',              2::smallint, '공정 중 재공 창고'),
+    ('WH_TYPE',               '제품',            '제품',              3::smallint, '완제품 보관 창고'),
+    ('WH_TYPE',               '일반',            '일반',              4::smallint, '일반 창고')
+) AS v(group_code, code, code_name, sort_no, remark)
+WHERE NOT EXISTS (SELECT 1 FROM common_code);
+
+-- 발주 · 주문 구분 코드 및 통화 (ERP 에서 수신)
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS order_type varchar(20) NOT NULL DEFAULT '0';
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS currency   varchar(10) NOT NULL DEFAULT 'KRW';
+ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS order_type varchar(20) NOT NULL DEFAULT '0';
+ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS currency   varchar(10) NOT NULL DEFAULT 'KRW';
 
 -- 처음 한 번: 기존 창고 구분 · 품목 기본 창고 채우기
 UPDATE warehouse
@@ -329,9 +396,10 @@ WHERE default_wh_code IS NULL AND erp_synced_at IS NULL
 CREATE TABLE IF NOT EXISTS partner (
     partner_code   varchar(10) PRIMARY KEY,
     partner_name   varchar(50) NOT NULL,
-    partner_type   varchar(10) NOT NULL,
+    partner_type   varchar(20) NOT NULL,
     erp_synced_at  timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE partner ALTER COLUMN partner_type TYPE varchar(20);
 
 -- 공정
 CREATE TABLE IF NOT EXISTS process (

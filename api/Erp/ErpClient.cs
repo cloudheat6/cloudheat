@@ -14,11 +14,16 @@ public sealed class ErpOptions
 }
 
 // ── ERP 가 주는 데이터 ─────────────────────────────────────
+public sealed record ErpCommonCode(string GroupCode, string Code, string CodeName, short SortNo, bool UseYn, string Remark, DateTime UpdatedAt);
+
+public sealed record ErpCodeGroup(string GroupCode, string GroupName, string Remark, bool UseYn, short SortNo, DateTime UpdatedAt, List<ErpCommonCode> Codes);
+
 public sealed record ErpOrderLine(short LineNo, string ItemCode, string ItemName, string Unit, int Qty, decimal UnitPrice);
 
 public sealed record ErpOrder(
     string OrderNo, string OrderDate, string PartnerCode, string PartnerName,
-    string DueDate, string Status, DateTime UpdatedAt, List<ErpOrderLine> Lines);
+    string DueDate, string Status, DateTime UpdatedAt, List<ErpOrderLine> Lines,
+    string OrderType = "0", string Currency = "KRW");
 
 public sealed record ErpItem(string ItemCode, string ItemName, string ItemType, string Unit, DateTime UpdatedAt);
 
@@ -38,6 +43,9 @@ public sealed class ErpException(string message, bool retryable) : Exception(mes
 public sealed class ErpClient(HttpClient http)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public Task<List<ErpCodeGroup>> GetCodesAsync(DateTime? since, CancellationToken ct) =>
+        GetListAsync<ErpCodeGroup>("erp/v1/codes", since, ct);
 
     public Task<List<ErpItem>> GetItemsAsync(DateTime? since, CancellationToken ct) =>
         GetListAsync<ErpItem>("erp/v1/items", since, ct);

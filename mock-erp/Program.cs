@@ -63,7 +63,10 @@ v1.AddEndpointFilter(async (ctx, next) =>
     return await next(ctx);
 });
 
-// 기준정보: 품목 · 거래처 (ERP 가 원본)
+// 기준정보: 관리내역(공통코드) · 품목 · 거래처 (ERP 가 원본)
+v1.MapGet("/codes", async (DateTimeOffset? updatedSince, ErpStore store) =>
+    Results.Ok(await store.ListCodeGroupsAsync(updatedSince?.ToUniversalTime())));
+
 v1.MapGet("/items", async (DateTimeOffset? updatedSince, ErpStore store) =>
     Results.Ok(await store.ListItemsAsync(updatedSince?.ToUniversalTime())));
 
@@ -98,6 +101,17 @@ ui.AddEndpointFilter(async (ctx, next) =>
     catch (UiException ex) { return Results.Json(new { message = ex.Message }, statusCode: ex.Status); }
 });
 ui.MapGet("/health", () => Results.Ok(new { status = "ok", version = AppInfo.Version }));
+ui.MapGet("/codes", async (ErpUiStore s) => Results.Ok(await s.CodesAsync()));
+ui.MapPost("/codes/groups", async (CodeGroupInput body, ErpUiStore s) =>
+{ await s.CreateCodeGroupAsync(body); return Results.Ok(); }).RequireRateLimiting("writes");
+ui.MapPut("/codes/groups/{groupCode}", async (string groupCode, CodeGroupInput body, ErpUiStore s) =>
+{ await s.UpdateCodeGroupAsync(groupCode, body); return Results.Ok(); }).RequireRateLimiting("writes");
+ui.MapPost("/codes/{groupCode}", async (string groupCode, CommonCodeInput body, ErpUiStore s) =>
+{ await s.CreateCodeAsync(groupCode, body); return Results.Ok(); }).RequireRateLimiting("writes");
+ui.MapPut("/codes/{groupCode}/{code}", async (string groupCode, string code, CommonCodeInput body, ErpUiStore s) =>
+{ await s.UpdateCodeAsync(groupCode, code, body); return Results.Ok(); }).RequireRateLimiting("writes");
+ui.MapDelete("/codes/{groupCode}/{code}", async (string groupCode, string code, ErpUiStore s) =>
+{ await s.DeleteCodeAsync(groupCode, code); return Results.Ok(); }).RequireRateLimiting("writes");
 ui.MapGet("/items", async (ErpUiStore s) => Results.Ok(await s.ItemsAsync()));
 ui.MapGet("/partners", async (ErpUiStore s) => Results.Ok(await s.PartnersAsync()));
 ui.MapGet("/orders/{kind}", async (string kind, ErpUiStore s) => Results.Ok(await s.ListAsync(kind)));

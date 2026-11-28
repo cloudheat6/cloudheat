@@ -7,7 +7,39 @@ BEGIN;
 TRUNCATE mes_document, goods_receipt, production_result, goods_issue, purchase_order, sales_order RESTART IDENTITY CASCADE;
 DELETE FROM item;
 DELETE FROM partner;
+DELETE FROM code_group;
 ALTER SEQUENCE doc_seq RESTART;
+
+INSERT INTO code_group (group_code, group_name, remark, sort_no) VALUES
+    ('PO_TYPE',      '발주구분',   '발주등록 과세 · 영세 구분', 1),
+    ('SO_TYPE',      '주문구분',   '주문등록 과세 · 영세 구분', 2),
+    ('CURRENCY',     '통화',       '거래 통화 코드',           3),
+    ('ITEM_TYPE',    '품목구분',   '품목 자산 분류',           4),
+    ('PARTNER_TYPE', '거래처구분', '매입 · 매출 거래처 구분',  5),
+    ('UNIT',         '단위',       '재고 · 거래 계량 단위',    6),
+    ('WH_TYPE',      '창고구분',   '창고 용도 구분',           7);
+
+INSERT INTO common_code (group_code, code, code_name, sort_no, remark) VALUES
+    ('PO_TYPE',      '0',      '국내발주', 1, '부가세 10% (소수점 버림)'),
+    ('PO_TYPE',      '1',      '수입영세', 2, '부가세 0%'),
+    ('SO_TYPE',      '0',      '국내주문', 1, '부가세 10% (소수점 버림)'),
+    ('SO_TYPE',      '1',      '수출영세', 2, '부가세 0%'),
+    ('CURRENCY',     'KRW',    '원화',     1, '기본 통화 (환율 1)'),
+    ('CURRENCY',     'USD',    '미국 달러', 2, ''),
+    ('CURRENCY',     'EUR',    '유로',     3, ''),
+    ('CURRENCY',     'JPY',    '일본 엔',  4, ''),
+    ('CURRENCY',     'CNY',    '중국 위안', 5, ''),
+    ('ITEM_TYPE',    '제품',   '제품',     1, '완제품'),
+    ('ITEM_TYPE',    '원자재', '원자재',   2, '원부자재'),
+    ('PARTNER_TYPE', '매입처', '매입처',   1, '자재 구매처'),
+    ('PARTNER_TYPE', '매출처', '매출처',   2, '제품 고객사'),
+    ('UNIT',         'EA',     'EA',       1, '개'),
+    ('UNIT',         'KG',     'KG',       2, '킬로그램'),
+    ('UNIT',         'L',      'L',        3, '리터'),
+    ('WH_TYPE',      '원자재', '원자재',   1, '원자재 보관 창고'),
+    ('WH_TYPE',      '현장',   '현장',     2, '공정 중 재공 창고'),
+    ('WH_TYPE',      '제품',   '제품',     3, '완제품 보관 창고'),
+    ('WH_TYPE',      '일반',   '일반',     4, '일반 창고');
 
 INSERT INTO item (item_code, item_name, item_type, unit) VALUES
     ('BRK-A100', '브래킷 A100', '제품', 'EA'),

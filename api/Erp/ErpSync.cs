@@ -23,8 +23,8 @@ public sealed class SyncLog
 /// </summary>
 public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<ErpSyncService> log)
 {
-    public static readonly string[] Kinds = ["품목", "거래처", "발주", "주문"];
-    public static readonly string[] MasterKinds = ["품목", "거래처"];
+    public static readonly string[] Kinds = ["공통코드", "품목", "거래처", "발주", "주문"];
+    public static readonly string[] MasterKinds = ["공통코드", "품목", "거래처"];
     public static readonly string[] OrderKinds = ["발주", "주문"];
 
     private readonly SemaphoreSlim _gate = new(1, 1);   // 자동 · 수동 수신이 겹치지 않게
@@ -51,6 +51,12 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
     {
         switch (kind)
         {
+            case "공통코드":
+            {
+                var groups = await erp.GetCodesAsync(since, ct);
+                return new(groups.Count, groups.Count > 0 ? groups.Max(x => x.UpdatedAt) : null,
+                    groups.Select(x => x.GroupCode).ToList(), (c, t) => ApplyCodesAsync(c, groups, t));
+            }
             case "품목":
             {
                 var items = await erp.GetItemsAsync(since, ct);
@@ -133,6 +139,42 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
         return await WriteLogAsync(conn, kind, triggerBy, started, batch.Fetched, applied, problems.Count, status, message);
     }
 
+    // 공통코드: ERP 관리내역등록의 항목 · 상세 코드를 MES 에 동기화 (삭제된 상세 코드도 반영)
+    private static async Task<(int, List<string>, string?)> ApplyCodesAsync(NpgsqlConnection conn, List<ErpCodeGroup> groups, CancellationToken ct)
+    {
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var codeCount = 0;
+        foreach (var g in groups)
+        {
+            await conn.ExecuteAsync("""
+                INSERT INTO mes.code_group (group_code, group_name, remark, use_yn, sort_no, erp_synced_at)
+                VALUES (@GroupCode, @GroupName, @Remark, @UseYn, @SortNo, now())
+                ON CONFLICT (group_code) DO UPDATE
+                    SET group_name = EXCLUDED.group_name, remark = EXCLUDED.remark,
+                        use_yn = EXCLUDED.use_yn, sort_no = EXCLUDED.sort_no, erp_synced_at = now()
+                """, g, tx);
+
+            var codes = g.Codes ?? [];
+            codeCount += codes.Count;
+            if (codes.Count > 0)
+            {
+                await conn.ExecuteAsync("""
+                    INSERT INTO mes.common_code (group_code, code, code_name, sort_no, use_yn, remark, erp_synced_at)
+                    VALUES (@GroupCode, @Code, @CodeName, @SortNo, @UseYn, @Remark, now())
+                    ON CONFLICT (group_code, code) DO UPDATE
+                        SET code_name = EXCLUDED.code_name, sort_no = EXCLUDED.sort_no,
+                            use_yn = EXCLUDED.use_yn, remark = EXCLUDED.remark, erp_synced_at = now()
+                    """, codes, tx);
+            }
+            await conn.ExecuteAsync("""
+                DELETE FROM mes.common_code
+                WHERE group_code = @GroupCode AND NOT (code = ANY(@keep))
+                """, new { g.GroupCode, keep = codes.Select(c => c.Code).ToArray() }, tx);
+        }
+        await tx.CommitAsync(ct);
+        return (groups.Count, [], $"코드 {codeCount}건");
+    }
+
     // 품목: ERP 값(이름 · 구분 · 단위)만 덮어쓰고 MES 전용 속성(기본 창고 · 라인 · 안전재고 · 사용)은 유지
     private static async Task<(int, List<string>, string?)> ApplyItemsAsync(NpgsqlConnection conn, List<ErpItem> items, CancellationToken ct)
     {
@@ -193,10 +235,11 @@ public sealed class ErpSyncService(NpgsqlDataSource db, ErpClient erp, ILogger<E
 
         await using var tx = await conn.BeginTransactionAsync(ct);
         await conn.ExecuteAsync($"""
-            INSERT INTO mes.{h} ({no}, {date}, {partner}, due_date, erp_status, synced_at)
-            VALUES (@OrderNo, @OrderDate::date, @PartnerName, @DueDate::date, @Status, now())
+            INSERT INTO mes.{h} ({no}, {date}, order_type, currency, {partner}, due_date, erp_status, synced_at)
+            VALUES (@OrderNo, @OrderDate::date, @OrderType, @Currency, @PartnerName, @DueDate::date, @Status, now())
             ON CONFLICT ({no}) DO UPDATE
-                SET {date} = EXCLUDED.{date}, {partner} = EXCLUDED.{partner}, due_date = EXCLUDED.due_date,
+                SET {date} = EXCLUDED.{date}, order_type = EXCLUDED.order_type, currency = EXCLUDED.currency,
+                    {partner} = EXCLUDED.{partner}, due_date = EXCLUDED.due_date,
                     erp_status = EXCLUDED.erp_status, synced_at = now()
             """, o, tx);
         foreach (var line in o.Lines)

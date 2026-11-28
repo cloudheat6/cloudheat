@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router'
 import { mesWebUrl } from './lib/api.js'
 import Orders from './pages/Orders.jsx'
 import Master from './pages/Master.jsx'
+import Codes from './pages/Codes.jsx'
 import Planned from './pages/Planned.jsx'
 
 // 메뉴: planned 가 있으면 아직 준비 중인 화면 (설명 문구)
@@ -12,34 +13,35 @@ export const MENU = [
     items: [
       { to: '/master/items', label: '품목등록', icon: '▦' },
       { to: '/master/partners', label: '거래처등록', icon: '☷' },
+      { to: '/master/codes', label: '관리내역등록', icon: '⊞' },
     ],
   },
   {
     group: '구매관리',
     items: [
       { to: '/purchase/orders', label: '발주등록', icon: '✎' },
-      { to: '/purchase/receipts', label: '입고관리', icon: '⊕', kind: '외부 연동', planned: 'MES 입고관리에서 등록한 입고 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
+      { to: '/purchase/receipts', label: '입고등록', icon: '⊕', kind: '외부 연동', planned: 'MES 입고관리에서 등록한 입고 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
     ],
   },
   {
     group: '영업관리',
     items: [
-      { to: '/sales/orders', label: '수주등록', icon: '✎' },
-      { to: '/sales/shipments', label: '출고관리', icon: '⊖', kind: '외부 연동', planned: 'MES 출고관리에서 등록한 출고 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
+      { to: '/sales/orders', label: '주문등록', icon: '✎' },
+      { to: '/sales/shipments', label: '출고등록', icon: '⊖', kind: '외부 연동', planned: 'MES 출고관리에서 등록한 출고 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
     ],
   },
   {
     group: '생산관리',
     items: [
-      { to: '/production/work-orders', label: '지시관리', icon: '⚙', kind: '외부 연동', planned: 'MES 작업지시관리의 작업지시 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
-      { to: '/production/results', label: '실적관리', icon: '✓', kind: '외부 연동', planned: 'MES 생산실적관리에서 등록한 생산실적을 전송받아 조회하는 읽기 전용 화면이에요.' },
+      { to: '/production/work-orders', label: '지시등록', icon: '⚙', kind: '외부 연동', planned: 'MES 작업지시관리의 작업지시 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
+      { to: '/production/results', label: '실적등록', icon: '✓', kind: '외부 연동', planned: 'MES 생산실적관리에서 등록한 생산실적을 전송받아 조회하는 읽기 전용 화면이에요.' },
     ],
   },
   {
     group: '재고관리',
     items: [
-      { to: '/inventory/moves', label: '재고이동관리', icon: '⇄', kind: '외부 연동', planned: 'MES 재고이동관리에서 등록한 창고 간 이동 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
-      { to: '/inventory/adjustments', label: '재고조정관리', icon: '±', kind: '외부 연동', planned: 'MES에서 등록한 기초재고(기초조정) · 재고조정 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
+      { to: '/inventory/moves', label: '재고이동등록', icon: '⇄', kind: '외부 연동', planned: 'MES 재고이동관리에서 등록한 창고 간 이동 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
+      { to: '/inventory/adjustments', label: '재고조정등록', icon: '±', kind: '외부 연동', planned: 'MES에서 등록한 기초재고(기초조정) · 재고조정 내역을 전송받아 조회하는 읽기 전용 화면이에요.' },
       { to: '/inventory/ledger', label: '재고수불부', icon: '≡', kind: '조회', planned: '기초조정 · 입고 · 생산 · 출고 · 이동 · 조정 전표를 기준으로 품목별 재고 수불 내역을 조회하는 화면이에요.' },
     ],
   },
@@ -109,6 +111,7 @@ export default function App() {
 
             <Route path="/master/items" element={<Master kind="items" />} />
             <Route path="/master/partners" element={<Master kind="partners" />} />
+            <Route path="/master/codes" element={<Codes />} />
             <Route path="/purchase/orders" element={<Orders kind="purchase" />} />
             <Route path="/sales/orders" element={<Orders kind="sales" />} />
             {PLANNED.map((p) => (

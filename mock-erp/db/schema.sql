@@ -13,8 +13,33 @@ CREATE TABLE IF NOT EXISTS item (
 CREATE TABLE IF NOT EXISTS partner (
     partner_code  varchar(10) PRIMARY KEY,
     partner_name  varchar(50) NOT NULL,
-    partner_type  varchar(10) NOT NULL CHECK (partner_type IN ('매입처', '매출처'))
+    partner_type  varchar(20) NOT NULL
 );
+ALTER TABLE partner DROP CONSTRAINT IF EXISTS partner_partner_type_check;
+ALTER TABLE partner ALTER COLUMN partner_type TYPE varchar(20);
+
+-- 관리내역 (공통코드 분류 · 상세): 발주구분 · 주문구분 · 통화 · 품목구분 · 거래처구분 · 단위 · 창고구분 등
+CREATE TABLE IF NOT EXISTS code_group (
+    group_code  varchar(20)  PRIMARY KEY,
+    group_name  varchar(50)  NOT NULL,
+    remark      varchar(200) NOT NULL DEFAULT '',
+    use_yn      boolean      NOT NULL DEFAULT true,
+    sort_no     smallint     NOT NULL DEFAULT 0,
+    updated_at  timestamptz  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_code_group_updated ON code_group (updated_at);
+
+CREATE TABLE IF NOT EXISTS common_code (
+    group_code  varchar(20)  NOT NULL REFERENCES code_group ON DELETE CASCADE,
+    code        varchar(20)  NOT NULL,
+    code_name   varchar(50)  NOT NULL,
+    sort_no     smallint     NOT NULL DEFAULT 0,
+    use_yn      boolean      NOT NULL DEFAULT true,
+    remark      varchar(200) NOT NULL DEFAULT '',
+    updated_at  timestamptz  NOT NULL DEFAULT now(),
+    PRIMARY KEY (group_code, code)
+);
+CREATE INDEX IF NOT EXISTS ix_common_code_updated ON common_code (updated_at);
 
 -- 발주
 CREATE TABLE IF NOT EXISTS purchase_order (
@@ -72,6 +97,32 @@ ALTER TABLE partner ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEF
 -- 발주 · 수주 비고 (ERP 화면에서 입력)
 ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS remark varchar(200) NOT NULL DEFAULT '';
 ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS remark varchar(200) NOT NULL DEFAULT '';
+
+-- 발주 · 주문 구분 (관리내역 PO_TYPE / SO_TYPE 코드), 통화 · 환율, 공급가 · 부가세 · 합계액
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS order_type    varchar(20)   NOT NULL DEFAULT '0';
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS currency      varchar(10)   NOT NULL DEFAULT 'KRW';
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS exchange_rate numeric(12,4) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0);
+ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS order_type    varchar(20)   NOT NULL DEFAULT '0';
+ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS currency      varchar(10)   NOT NULL DEFAULT 'KRW';
+ALTER TABLE sales_order    ADD COLUMN IF NOT EXISTS exchange_rate numeric(12,4) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0);
+
+-- 예전 smallint order_type 컬럼이 있던 DB 를 varchar(20) 코드형으로 변환
+ALTER TABLE purchase_order DROP CONSTRAINT IF EXISTS purchase_order_order_type_check;
+ALTER TABLE sales_order    DROP CONSTRAINT IF EXISTS sales_order_order_type_check;
+ALTER TABLE purchase_order ALTER COLUMN order_type DROP DEFAULT;
+ALTER TABLE sales_order    ALTER COLUMN order_type DROP DEFAULT;
+ALTER TABLE purchase_order ALTER COLUMN order_type TYPE varchar(20) USING order_type::text;
+ALTER TABLE sales_order    ALTER COLUMN order_type TYPE varchar(20) USING order_type::text;
+ALTER TABLE purchase_order ALTER COLUMN order_type SET DEFAULT '0';
+ALTER TABLE sales_order    ALTER COLUMN order_type SET DEFAULT '0';
+
+ALTER TABLE purchase_order_line ADD COLUMN IF NOT EXISTS supply_amt bigint NOT NULL DEFAULT 0;
+ALTER TABLE purchase_order_line ADD COLUMN IF NOT EXISTS vat_amt    bigint NOT NULL DEFAULT 0;
+ALTER TABLE purchase_order_line ADD COLUMN IF NOT EXISTS total_amt  bigint NOT NULL DEFAULT 0;
+
+ALTER TABLE sales_order_line ADD COLUMN IF NOT EXISTS supply_amt bigint NOT NULL DEFAULT 0;
+ALTER TABLE sales_order_line ADD COLUMN IF NOT EXISTS vat_amt    bigint NOT NULL DEFAULT 0;
+ALTER TABLE sales_order_line ADD COLUMN IF NOT EXISTS total_amt  bigint NOT NULL DEFAULT 0;
 
 -- ════════════════════════════════════════════════════════
 -- 전표 테이블: 입고 · 생산실적 · 출고 (헤더 + 행)
@@ -276,6 +327,65 @@ BEGIN
         ON CONFLICT (erp_doc_no, line_no) DO NOTHING;
 
         INSERT INTO erp.schema_migration (key) VALUES ('20261128_mes_document_to_vouchers');
+    END IF;
+
+    -- 기존 발주 · 수주 행의 공급가 · 부가세 · 합계액 1회 채우기
+    IF NOT EXISTS (SELECT 1 FROM erp.schema_migration WHERE key = '20261128_order_line_amounts') THEN
+        UPDATE erp.purchase_order_line l
+        SET supply_amt = trunc(l.qty * l.unit_price)::bigint,
+            vat_amt    = CASE WHEN o.order_type::text = '0' THEN trunc(trunc(l.qty * l.unit_price) / 10)::bigint ELSE 0 END,
+            total_amt  = trunc(l.qty * l.unit_price)::bigint
+                       + CASE WHEN o.order_type::text = '0' THEN trunc(trunc(l.qty * l.unit_price) / 10)::bigint ELSE 0 END
+        FROM erp.purchase_order o
+        WHERE o.po_no = l.po_no;
+
+        UPDATE erp.sales_order_line l
+        SET supply_amt = trunc(l.qty * l.unit_price)::bigint,
+            vat_amt    = CASE WHEN o.order_type::text = '0' THEN trunc(trunc(l.qty * l.unit_price) / 10)::bigint ELSE 0 END,
+            total_amt  = trunc(l.qty * l.unit_price)::bigint
+                       + CASE WHEN o.order_type::text = '0' THEN trunc(trunc(l.qty * l.unit_price) / 10)::bigint ELSE 0 END
+        FROM erp.sales_order o
+        WHERE o.so_no = l.so_no;
+
+        INSERT INTO erp.schema_migration (key) VALUES ('20261128_order_line_amounts');
+    END IF;
+
+    -- 기본 관리내역(공통코드) 1회 초기 등록
+    IF NOT EXISTS (SELECT 1 FROM erp.schema_migration WHERE key = '20261129_seed_common_codes') THEN
+        INSERT INTO erp.code_group (group_code, group_name, remark, sort_no) VALUES
+            ('PO_TYPE',      '발주구분',   '발주등록 과세 · 영세 구분', 1),
+            ('SO_TYPE',      '주문구분',   '주문등록 과세 · 영세 구분', 2),
+            ('CURRENCY',     '통화',       '거래 통화 코드',           3),
+            ('ITEM_TYPE',    '품목구분',   '품목 자산 분류',           4),
+            ('PARTNER_TYPE', '거래처구분', '매입 · 매출 거래처 구분',  5),
+            ('UNIT',         '단위',       '재고 · 거래 계량 단위',    6),
+            ('WH_TYPE',      '창고구분',   '창고 용도 구분',           7)
+        ON CONFLICT (group_code) DO NOTHING;
+
+        INSERT INTO erp.common_code (group_code, code, code_name, sort_no, remark) VALUES
+            ('PO_TYPE',      '0',      '국내발주', 1, '부가세 10% (소수점 버림)'),
+            ('PO_TYPE',      '1',      '수입영세', 2, '부가세 0%'),
+            ('SO_TYPE',      '0',      '국내주문', 1, '부가세 10% (소수점 버림)'),
+            ('SO_TYPE',      '1',      '수출영세', 2, '부가세 0%'),
+            ('CURRENCY',     'KRW',    '원화',     1, '기본 통화 (환율 1)'),
+            ('CURRENCY',     'USD',    '미국 달러', 2, ''),
+            ('CURRENCY',     'EUR',    '유로',     3, ''),
+            ('CURRENCY',     'JPY',    '일본 엔',  4, ''),
+            ('CURRENCY',     'CNY',    '중국 위안', 5, ''),
+            ('ITEM_TYPE',    '제품',   '제품',     1, '완제품'),
+            ('ITEM_TYPE',    '원자재', '원자재',   2, '원부자재'),
+            ('PARTNER_TYPE', '매입처', '매입처',   1, '자재 구매처'),
+            ('PARTNER_TYPE', '매출처', '매출처',   2, '제품 고객사'),
+            ('UNIT',         'EA',     'EA',       1, '개'),
+            ('UNIT',         'KG',     'KG',       2, '킬로그램'),
+            ('UNIT',         'L',      'L',        3, '리터'),
+            ('WH_TYPE',      '원자재', '원자재',   1, '원자재 보관 창고'),
+            ('WH_TYPE',      '현장',   '현장',     2, '공정 중 재공 창고'),
+            ('WH_TYPE',      '제품',   '제품',     3, '완제품 보관 창고'),
+            ('WH_TYPE',      '일반',   '일반',     4, '일반 창고')
+        ON CONFLICT (group_code, code) DO NOTHING;
+
+        INSERT INTO erp.schema_migration (key) VALUES ('20261129_seed_common_codes');
     END IF;
 END
 $$;

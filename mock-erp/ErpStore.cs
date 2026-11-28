@@ -14,12 +14,18 @@ public sealed class OrderLine
     public string Unit { get; init; } = "";
     public int Qty { get; init; }
     public decimal UnitPrice { get; init; }
+    public long SupplyAmt { get; init; }
+    public long VatAmt { get; init; }
+    public long TotalAmt { get; init; }
 }
 
 public sealed class OrderHeader
 {
     public string OrderNo { get; init; } = "";
     public string OrderDate { get; init; } = "";
+    public string OrderType { get; init; } = "0";
+    public string Currency { get; init; } = "KRW";
+    public decimal ExchangeRate { get; init; } = 1m;
     public string PartnerCode { get; init; } = "";
     public string PartnerName { get; init; } = "";
     public string DueDate { get; init; } = "";
@@ -27,6 +33,28 @@ public sealed class OrderHeader
     public string Remark { get; init; } = "";
     public DateTime UpdatedAt { get; init; }
     public List<OrderLine> Lines { get; } = [];
+}
+
+public sealed class ErpCommonCode
+{
+    public string GroupCode { get; init; } = "";
+    public string Code { get; init; } = "";
+    public string CodeName { get; init; } = "";
+    public short SortNo { get; init; }
+    public bool UseYn { get; init; }
+    public string Remark { get; init; } = "";
+    public DateTime UpdatedAt { get; init; }
+}
+
+public sealed class ErpCodeGroup
+{
+    public string GroupCode { get; init; } = "";
+    public string GroupName { get; init; } = "";
+    public string Remark { get; init; } = "";
+    public bool UseYn { get; init; }
+    public short SortNo { get; init; }
+    public DateTime UpdatedAt { get; init; }
+    public List<ErpCommonCode> Codes { get; } = [];
 }
 
 public sealed class ErpItem
@@ -83,6 +111,32 @@ public sealed class ErpStore(NpgsqlDataSource db)
         ["출고"] = "EGI",
     };
 
+    public async Task<List<ErpCodeGroup>> ListCodeGroupsAsync(DateTimeOffset? updatedSince)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        var groups = (await conn.QueryAsync<ErpCodeGroup>("""
+            SELECT g.group_code, g.group_name, g.remark, g.use_yn, g.sort_no,
+                   GREATEST(g.updated_at, COALESCE((SELECT max(c.updated_at) FROM erp.common_code c WHERE c.group_code = g.group_code), g.updated_at)) AS updated_at
+            FROM erp.code_group g
+            WHERE @since::timestamptz IS NULL
+               OR g.updated_at > @since
+               OR EXISTS (SELECT 1 FROM erp.common_code c WHERE c.group_code = g.group_code AND c.updated_at > @since)
+            ORDER BY g.sort_no, g.group_code
+            """, new { since = updatedSince })).ToList();
+        if (groups.Count == 0) return groups;
+
+        var codes = await conn.QueryAsync<ErpCommonCode>("""
+            SELECT group_code, code, code_name, sort_no, use_yn, remark, updated_at
+            FROM erp.common_code
+            WHERE group_code = ANY(@gcodes)
+            ORDER BY group_code, sort_no, code
+            """, new { gcodes = groups.Select(g => g.GroupCode).ToArray() });
+        var byGroup = groups.ToDictionary(g => g.GroupCode);
+        foreach (var c in codes)
+            byGroup[c.GroupCode].Codes.Add(c);
+        return groups;
+    }
+
     public async Task<IEnumerable<ErpItem>> ListItemsAsync(DateTimeOffset? updatedSince)
     {
         await using var conn = await db.OpenConnectionAsync();
@@ -109,6 +163,7 @@ public sealed class ErpStore(NpgsqlDataSource db)
         await using var conn = await db.OpenConnectionAsync();
         var headers = (await conn.QueryAsync<OrderHeader>($"""
             SELECT o.{no} AS order_no, to_char(o.{date}, 'YYYY-MM-DD') AS order_date,
+                   o.order_type, o.currency, o.exchange_rate,
                    o.partner_code, p.partner_name, to_char(o.due_date, 'YYYY-MM-DD') AS due_date,
                    o.status, o.remark, o.updated_at
             FROM erp.{h} o JOIN erp.partner p ON p.partner_code = o.partner_code
@@ -117,8 +172,9 @@ public sealed class ErpStore(NpgsqlDataSource db)
             """, new { since = updatedSince })).ToList();
         if (headers.Count == 0) return headers;
 
-        var lines = await conn.QueryAsync<(string OrderNo, short LineNo, string ItemCode, string ItemName, string Unit, int Qty, decimal UnitPrice)>($"""
-            SELECT l.{no}, l.line_no, l.item_code, i.item_name, i.unit, l.qty, l.unit_price
+        var lines = await conn.QueryAsync<LineRow>($"""
+            SELECT l.{no} AS order_no, l.line_no, l.item_code, i.item_name, i.unit, l.qty, l.unit_price,
+                   l.supply_amt, l.vat_amt, l.total_amt
             FROM erp.{l} l JOIN erp.item i ON i.item_code = l.item_code
             WHERE l.{no} = ANY(@nos)
             ORDER BY l.{no}, l.line_no
@@ -129,8 +185,23 @@ public sealed class ErpStore(NpgsqlDataSource db)
             {
                 LineNo = x.LineNo, ItemCode = x.ItemCode, ItemName = x.ItemName,
                 Unit = x.Unit, Qty = x.Qty, UnitPrice = x.UnitPrice,
+                SupplyAmt = x.SupplyAmt, VatAmt = x.VatAmt, TotalAmt = x.TotalAmt,
             });
         return headers;
+    }
+
+    private sealed class LineRow
+    {
+        public string OrderNo { get; init; } = "";
+        public short LineNo { get; init; }
+        public string ItemCode { get; init; } = "";
+        public string ItemName { get; init; } = "";
+        public string Unit { get; init; } = "";
+        public int Qty { get; init; }
+        public decimal UnitPrice { get; init; }
+        public long SupplyAmt { get; init; }
+        public long VatAmt { get; init; }
+        public long TotalAmt { get; init; }
     }
 
     public async Task<string?> ValidateAsync(MesDocument doc)

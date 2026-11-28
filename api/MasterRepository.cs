@@ -27,6 +27,28 @@ public sealed class PartnerRow
     public DateTime ErpSyncedAt { get; init; }
 }
 
+public sealed class CommonCodeRow
+{
+    public string GroupCode { get; init; } = "";
+    public string Code { get; init; } = "";
+    public string CodeName { get; init; } = "";
+    public short SortNo { get; init; }
+    public bool UseYn { get; init; }
+    public string Remark { get; init; } = "";
+    public DateTime ErpSyncedAt { get; init; }
+}
+
+public sealed class CodeGroupRow
+{
+    public string GroupCode { get; init; } = "";
+    public string GroupName { get; init; } = "";
+    public string Remark { get; init; } = "";
+    public bool UseYn { get; init; }
+    public short SortNo { get; init; }
+    public DateTime ErpSyncedAt { get; init; }
+    public List<CommonCodeRow> Codes { get; } = [];
+}
+
 public sealed class ProcessRow
 {
     public string ProcessCode { get; init; } = "";
@@ -122,6 +144,21 @@ public sealed class MasterRepository(NpgsqlDataSource db)
             "SELECT partner_code, partner_name, partner_type, erp_synced_at FROM mes.partner ORDER BY partner_type, partner_code");
     }
 
+    public async Task<List<CodeGroupRow>> CodeGroupsAsync()
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        var groups = (await conn.QueryAsync<CodeGroupRow>(
+            "SELECT group_code, group_name, remark, use_yn, sort_no, erp_synced_at FROM mes.code_group ORDER BY sort_no, group_code")).ToList();
+        if (groups.Count == 0) return groups;
+
+        var codes = await conn.QueryAsync<CommonCodeRow>(
+            "SELECT group_code, code, code_name, sort_no, use_yn, remark, erp_synced_at FROM mes.common_code ORDER BY group_code, sort_no, code");
+        var byGroup = groups.ToDictionary(g => g.GroupCode);
+        foreach (var c in codes)
+            if (byGroup.TryGetValue(c.GroupCode, out var g)) g.Codes.Add(c);
+        return groups;
+    }
+
     // ── 공정 ───────────────────────────────────────────────
     public async Task<IEnumerable<ProcessRow>> ProcessesAsync()
     {
@@ -169,8 +206,8 @@ public sealed class MasterRepository(NpgsqlDataSource db)
     {
         var code = Required(w.WhCode, "창고 코드", 10);
         var name = Required(w.WhName, "창고명", 30);
-        var type = WhType(w.WhType);
         await using var conn = await db.OpenConnectionAsync();
+        var type = await WhTypeAsync(conn, w.WhType);
         await Run(() => conn.ExecuteAsync(
             "INSERT INTO mes.warehouse (wh_code, wh_name, wh_type, use_yn) VALUES (@code, @name, @type, @UseYn)",
             new { code, name, type, w.UseYn }));
@@ -179,8 +216,8 @@ public sealed class MasterRepository(NpgsqlDataSource db)
     public async Task UpdateWarehouseAsync(string code, WarehouseInput w)
     {
         var name = Required(w.WhName, "창고명", 30);
-        var type = WhType(w.WhType);
         await using var conn = await db.OpenConnectionAsync();
+        var type = await WhTypeAsync(conn, w.WhType);
         await Found(conn.ExecuteAsync(
             "UPDATE mes.warehouse SET wh_name = @name, wh_type = @type, use_yn = @UseYn WHERE wh_code = @code",
             new { code, name, type, w.UseYn }));
@@ -317,8 +354,15 @@ public sealed class MasterRepository(NpgsqlDataSource db)
         return s;
     }
 
-    private static string WhType(string? t) =>
-        WarehouseTypes.Contains(t) ? t! : throw new MasterException($"창고 구분은 {string.Join(" · ", WarehouseTypes)} 중 하나예요");
+    // 공통코드 WH_TYPE 에 등록된 창고 구분을 우선 허용 (비어 있으면 기본 목록 사용)
+    private static async Task<string> WhTypeAsync(NpgsqlConnection conn, string? t)
+    {
+        var s = t?.Trim() ?? "";
+        var allowed = (await conn.QueryAsync<string>(
+            "SELECT code FROM mes.common_code WHERE group_code = 'WH_TYPE' AND use_yn ORDER BY sort_no, code")).ToArray();
+        var list = allowed.Length > 0 ? allowed : WarehouseTypes;
+        return list.Contains(s) ? s : throw new MasterException($"창고 구분은 {string.Join(" · ", list)} 중 하나예요");
+    }
 
     private static async Task Found(Task<int> update)
     {

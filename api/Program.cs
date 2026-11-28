@@ -114,7 +114,8 @@ master.AddEndpointFilter(async (ctx, next) =>
     catch (MasterException ex) { return Results.Json(new { message = ex.Message }, statusCode: ex.Status); }
 });
 
-// 품목 · 거래처: ERP 가 원본 → 조회 + MES 전용 속성만 수정
+// 공통코드 · 품목 · 거래처: ERP 가 원본 → 조회 + MES 전용 속성만 수정
+master.MapGet("/codes", async (MasterRepository r) => Results.Ok(await r.CodeGroupsAsync()));
 master.MapGet("/items", async (MasterRepository r) => Results.Ok(await r.ItemsAsync()));
 master.MapPut("/items/{code}", async (string code, ItemUpdate body, MasterRepository r) =>
 { await r.UpdateItemAsync(code, body); return Results.Ok(); }).RequireRateLimiting("writes");

@@ -22,6 +22,8 @@ public sealed class OrderLineRow
 {
     public string OrderNo { get; init; } = "";
     public string OrderDate { get; init; } = "";
+    public string OrderType { get; init; } = "0";
+    public string Currency { get; init; } = "KRW";
     public string PartnerName { get; init; } = "";
     public string DueDate { get; init; } = "";
     public string ErpStatus { get; init; } = "";
@@ -112,7 +114,8 @@ public sealed class IntegrationRepository(NpgsqlDataSource db)
             : ("sales_order", "sales_order_line", "so_no", "so_date", "customer_name", "shipped_qty");
         await using var conn = await db.OpenConnectionAsync();
         return await conn.QueryAsync<OrderLineRow>($"""
-            SELECT o.{no} AS order_no, to_char(o.{date}, 'YYYY-MM-DD') AS order_date, o.{partner} AS partner_name,
+            SELECT o.{no} AS order_no, to_char(o.{date}, 'YYYY-MM-DD') AS order_date,
+                   o.order_type, o.currency, o.{partner} AS partner_name,
                    to_char(o.due_date, 'YYYY-MM-DD') AS due_date, o.erp_status, o.synced_at,
                    l.line_no, l.item_code, i.item_name, i.unit, l.order_qty, l.{done} AS done_qty
             FROM mes.{h} o

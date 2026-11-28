@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { api, useApi } from '../../lib/api.js'
+import { useCodes } from '../../lib/codes.js'
 import { DataGrid } from '../../lib/grid.jsx'
 import { fmtDateTime, fmtNum } from '../../lib/format.js'
 import { useToast } from '../../lib/toast.jsx'
 import { BadgeCell, Chips, ErrorBox, Kpi, PageHeader, useToggleSet } from '../../components/ui.jsx'
 
-const TYPES = ['제품', '원자재']
+const DEFAULT_TYPES = ['제품', '원자재']
 
 // 품목: 코드 · 이름 · 구분 · 단위는 ERP 값(수정 불가), 나머지는 MES 전용 속성
 export default function Items() {
@@ -13,9 +14,15 @@ export default function Items() {
   const { data, error, reload } = useApi('/master/items')
   const { data: whs } = useApi('/master/warehouses')
   const { data: lines } = useApi('/master/lines')
+  const { codesOf, reload: reloadCodes } = useCodes()
   const [quick, setQuick] = useState('')
   const [types, setTypes] = useState(() => new Set())
   const [busy, setBusy] = useState(false)
+
+  const itemTypeOptions = useMemo(() => {
+    const list = codesOf('ITEM_TYPE').map((c) => c.code)
+    return list.length ? list : DEFAULT_TYPES
+  }, [codesOf])
 
   const whRef = useMemo(() => ({ '': '(없음)', ...Object.fromEntries((whs ?? []).map((w) => [w.whCode, w.whName])) }), [whs])
   const lineRef = useMemo(() => ({ '': '(없음)', ...Object.fromEntries((lines ?? []).map((l) => [String(l.lineId), l.lineName])) }), [lines])
@@ -80,6 +87,7 @@ export default function Items() {
       const failed = logs.some((l) => l.status === '실패')
       notify(`ERP 수신: ${logs.map((l) => `${l.kind} ${l.status}${l.applied ? ` ${l.applied}건` : ''}`).join(', ')}`, failed ? 'error' : 'ok')
       reload()
+      reloadCodes()
     } catch (err) {
       notify(err.message)
     } finally {
@@ -116,7 +124,7 @@ export default function Items() {
       </section>
       <section className="toolbar">
         <input className="search" type="search" placeholder="품목코드 · 품목명 검색" value={quick} onChange={(e) => setQuick(e.target.value)} />
-        <Chips label="구분" options={TYPES} value={types} onToggle={useToggleSet(setTypes)} />
+        <Chips label="구분" options={itemTypeOptions} value={types} onToggle={useToggleSet(setTypes)} />
         <span className="muted small legend">
           <i className="legend-erp" /> ERP 값
           <i className="legend-mes" /> MES에서 수정

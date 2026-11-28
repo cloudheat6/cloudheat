@@ -7,6 +7,8 @@ const META = {
     desc: '기준정보의 원본은 ERP 예요. MES 는 1분마다 바뀐 것만 받아가서 품목관리에 반영해요.',
     plannedNote: '품목 추가 · 수정 등록 기능은 준비 중이에요.',
     path: '/items',
+    typeGroup: 'ITEM_TYPE',
+    typeLabel: '품목구분',
     placeholder: '품목코드 · 품목명 검색',
   },
   partners: {
@@ -14,28 +16,38 @@ const META = {
     desc: '기준정보의 원본은 ERP 예요. MES 는 1분마다 바뀐 것만 받아가서 거래처관리에 반영해요.',
     plannedNote: '거래처 추가 · 수정 등록 기능은 준비 중이에요.',
     path: '/partners',
+    typeGroup: 'PARTNER_TYPE',
+    typeLabel: '거래처구분',
     placeholder: '거래처코드 · 거래처명 검색',
   },
 }
 
-// 품목등록 · 거래처등록: ERP 가 원본. 현재는 등록된 목록 조회, 추가 · 수정은 5단계에서 구현
+// 품목등록 · 거래처등록: ERP 가 원본, 구분 선택 목록은 관리내역등록(/codes)에서 가져옴
 export default function Master({ kind }) {
   const m = META[kind]
   const { data, error, reload } = useApi(m.path)
+  const codeGroups = useApi('/codes')
   const [quick, setQuick] = useState('')
+  const [typeFilter, setTypeFilter] = useState('전체')
+
+  const typeCodes = useMemo(() => {
+    return (codeGroups.data ?? []).find((g) => g.groupCode === m.typeGroup)?.codes ?? []
+  }, [codeGroups.data, m.typeGroup])
+
+  const typeMap = useMemo(() => Object.fromEntries(typeCodes.map((c) => [c.code, c.codeName])), [typeCodes])
 
   const rows = useMemo(() => {
     const q = quick.trim().toLowerCase()
     const list = data ?? []
     if (kind === 'items') {
       return list
-        .filter((i) => !q || `${i.itemCode} ${i.itemName} ${i.itemType}`.toLowerCase().includes(q))
+        .filter((i) => (typeFilter === '전체' || i.itemType === typeFilter) && (!q || `${i.itemCode} ${i.itemName} ${i.itemType}`.toLowerCase().includes(q)))
         .toSorted((a, b) => b.itemType.localeCompare(a.itemType) || a.itemCode.localeCompare(b.itemCode))
     }
     return list
-      .filter((p) => !q || `${p.partnerCode} ${p.partnerName} ${p.partnerType}`.toLowerCase().includes(q))
+      .filter((p) => (typeFilter === '전체' || p.partnerType === typeFilter) && (!q || `${p.partnerCode} ${p.partnerName} ${p.partnerType}`.toLowerCase().includes(q)))
       .toSorted((a, b) => a.partnerCode.localeCompare(b.partnerCode))
-  }, [data, kind, quick])
+  }, [data, kind, quick, typeFilter])
 
   return (
     <>
@@ -61,6 +73,14 @@ export default function Master({ kind }) {
       <section className="panel">
         <div className="panel-bar">
           <input className="search" type="search" placeholder={m.placeholder} value={quick} onChange={(e) => setQuick(e.target.value)} />
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label={m.typeLabel}>
+            <option value="전체">{m.typeLabel}: 전체</option>
+            {typeCodes.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.codeName}
+              </option>
+            ))}
+          </select>
           <span className="muted small">{rows.length}건</span>
         </div>
         <div className="table-wrap">
@@ -81,7 +101,7 @@ export default function Master({ kind }) {
                     <td className="mono strong">{i.itemCode}</td>
                     <td>{i.itemName}</td>
                     <td>
-                      <span className="tag">{i.itemType}</span>
+                      <span className="tag">{typeMap[i.itemType] ?? i.itemType}</span>
                     </td>
                     <td>{i.unit}</td>
                     <td className="mono muted">{fmtDateTime(i.updatedAt)}</td>
@@ -112,7 +132,7 @@ export default function Master({ kind }) {
                     <td className="mono strong">{p.partnerCode}</td>
                     <td>{p.partnerName}</td>
                     <td>
-                      <span className="tag">{p.partnerType}</span>
+                      <span className="tag">{typeMap[p.partnerType] ?? p.partnerType}</span>
                     </td>
                     <td className="mono muted">{fmtDateTime(p.updatedAt)}</td>
                   </tr>
